@@ -2,55 +2,66 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header  from './Header';
-import { Menu, X } from 'lucide-react';
 
 export default function Layout() {
   const { pathname } = useLocation();
   const compactSidebar = pathname.startsWith('/generateur-excel');
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Fermer le menu mobile à chaque changement de page
+  // Fermer le drawer à chaque changement de page
   useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  // Bloquer le scroll du body quand le drawer est ouvert
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileOpen]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
 
-      {/* ── Overlay mobile ───────────────────────────────────────── */}
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={() => setMobileOpen(false)}
+      {/* ── Overlay sombre (mobile) ───────────────────────────── */}
+      <div
+        onClick={() => setMobileOpen(false)}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 40,
+          background: 'rgba(0,0,0,0.5)',
+          opacity: mobileOpen ? 1 : 0,
+          pointerEvents: mobileOpen ? 'auto' : 'none',
+          transition: 'opacity 0.3s',
+        }}
+        className="md:hidden"
+      />
+
+      {/* ── Sidebar desktop (≥ md, toujours visible) ────────── */}
+      <div className="hidden md:block flex-shrink-0">
+        <Sidebar compact={compactSidebar} />
+      </div>
+
+      {/* ── Sidebar mobile (drawer) ──────────────────────────── */}
+      <div
+        style={{
+          position: 'fixed', top: 0, left: 0, bottom: 0,
+          zIndex: 50,
+          width: 272,
+          transform: mobileOpen ? 'translateX(0)' : 'translateX(-100%)',
+          transition: 'transform 0.3s cubic-bezier(0.4,0,0.2,1)',
+        }}
+        className="md:hidden"
+      >
+        <Sidebar
+          compact={false}
+          onClose={() => setMobileOpen(false)}
         />
-      )}
-
-      {/* ── Sidebar desktop (toujours visible ≥ md) ─────────────── */}
-      <div className="hidden md:flex flex-shrink-0">
-        <Sidebar compact={compactSidebar}/>
       </div>
 
-      {/* ── Sidebar mobile (drawer) ──────────────────────────────── */}
-      <div className={`
-        fixed inset-y-0 left-0 z-50 flex flex-shrink-0 md:hidden
-        transition-transform duration-300
-        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
-        <Sidebar compact={false}/>
-        <button
-          onClick={() => setMobileOpen(false)}
-          className="absolute top-4 right-[-44px] w-9 h-9 bg-white rounded-full shadow flex items-center justify-center"
-        >
-          <X size={18} className="text-gray-600"/>
-        </button>
-      </div>
-
-      {/* ── Contenu principal ────────────────────────────────────── */}
+      {/* ── Contenu principal ─────────────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Header onMenuClick={() => setMobileOpen(o => !o)}/>
-        <main className={`
-          flex-1 overflow-y-auto animate-fade-in
-          ${compactSidebar ? 'p-3 md:p-4' : 'p-3 md:p-6'}
-        `}>
-          <Outlet/>
+        <Header onMenuClick={() => setMobileOpen(o => !o)} />
+        <main className={`flex-1 overflow-y-auto animate-fade-in ${
+          compactSidebar ? 'p-3 md:p-4' : 'p-3 md:p-6'
+        }`}>
+          <Outlet />
         </main>
       </div>
     </div>
