@@ -168,7 +168,7 @@ export const dashboardAPI = {
     retard:      () => api.get('/dashboard/retard').catch(()   => ({ data: [] })),
     kpi:         () => api.get('/dashboard/kpi').catch(()      => ({ data: [] })),
     historique:  p  => api.get('/dashboard/historique', { params: p }),
-    predictions: p  => api.get('/dashboard/ia/predictions', { params: p })
+    predictions: p  => api.get('/equipements/ia/predictions', { params: p })
                          .catch(() => ({ data: { disponible: false, predictions: [] } })),
 };
 
