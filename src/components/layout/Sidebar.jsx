@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, FileCheck, Wrench, Bell, Calendar,
-  Package, Users, LogOut, Zap, FileSpreadsheet, History, Layers, Wheat, X
+  Users, LogOut, Zap, History, Layers, X
 } from 'lucide-react';
 import { useAuth } from '../../store/auth';
 
@@ -11,16 +11,13 @@ const nav = [
   { to:'/soumissions',  label:'Soumissions',              icon:FileCheck,                 modules:['MAINTENANCE','PRODUCTION'] },
   { to:'/historique',   label:'Historique',               icon:History,                   modules:['MAINTENANCE','PRODUCTION'] },
   { to:'/alertes',      label:'Alertes',                  icon:Bell,                      modules:['MAINTENANCE','PRODUCTION'] },
-  { to:'/matieres',     label:'Stocks Matières',          icon:Wheat,                     modules:['MAINTENANCE','PRODUCTION'] },
   { to:'/equipements',  label:'Équipements',              icon:Wrench,                    modules:['MAINTENANCE'] },
   { to:'/planning',     label:'Planning',                 icon:Calendar,                  modules:['MAINTENANCE'] },
   { to:'/lignes',       label:'Lignes de production',     icon:Layers,                    modules:['MAINTENANCE'] },
-  { to:'/stock',        label:'Stock pièces',             icon:Package,                   modules:['MAINTENANCE'] },
 ];
 
 const adminNav = [
-  { to:'/generateur-excel', label:'Générateur Excel', icon:FileSpreadsheet, modules:['MAINTENANCE','PRODUCTION'] },
-  { to:'/utilisateurs',     label:'Utilisateurs',     icon:Users,           modules:['MAINTENANCE','PRODUCTION'] },
+  { to:'/utilisateurs', label:'Utilisateurs', icon:Users, modules:['MAINTENANCE','PRODUCTION'] },
 ];
 
 export default function Sidebar({ compact = false, onClose }) {
