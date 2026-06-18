@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, ClipboardList, FileCheck, Wrench, Bell, Calendar, Users, LogOut, Zap, History, Layers, X
+  LayoutDashboard, ClipboardList, FileCheck, Wrench, Bell, Calendar,
+  Users, LogOut, Zap, History, Layers, X
 } from 'lucide-react';
 import { useAuth } from '../../store/auth';
 
@@ -16,7 +17,7 @@ const nav = [
 ];
 
 const adminNav = [
-  { to:'/utilisateurs',     label:'Utilisateurs',     icon:Users,           modules:['MAINTENANCE','PRODUCTION'] },
+  { to:'/utilisateurs', label:'Utilisateurs', icon:Users, modules:['MAINTENANCE','PRODUCTION'] },
 ];
 
 export default function Sidebar({ compact = false, onClose }) {
