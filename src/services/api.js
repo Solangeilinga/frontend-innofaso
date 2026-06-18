@@ -55,6 +55,12 @@ export const formulairesAPI = {
     reordonner:     (id, d)      => api.put(`/formulaires/${id}/champs/reordonner`, d),
     getSchema:      id           => api.get(`/formulaires/${id}/schema`),
     promptIA:       (id, d)      => api.post(`/formulaires/${id}/prompt-ia`, d),
+    // Sections
+    getSections:         id           => api.get(`/formulaires/${id}/sections`),
+    ajouterSection:      (id, d)      => api.post(`/formulaires/${id}/sections`, d),
+    modifierSection:     (id, sid, d) => api.put(`/formulaires/${id}/sections/${sid}`, d),
+    supprimerSection:    (id, sid)    => api.delete(`/formulaires/${id}/sections/${sid}`),
+    reordonnerSections:  (id, d)      => api.put(`/formulaires/${id}/sections/reordonner`, d),
 };
 
 // ── Soumissions ──────────────────────────────────────────────────

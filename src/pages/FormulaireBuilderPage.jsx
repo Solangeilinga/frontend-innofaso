@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formulairesAPI } from '../services/api';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Plus, Trash2, Edit2, GripVertical, Save, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit2, GripVertical, Save, ChevronDown, Eye, EyeOff, Layers, FolderOpen } from 'lucide-react';
+
 
 const TYPES_CHAMPS = [
   { value:'TEXTE',     label:'Texte',            emoji:'Aa' },
@@ -16,13 +17,12 @@ const TYPES_CHAMPS = [
   { value:'PHOTO',     label:'Photo',             emoji:'📷' },
 ];
 
-const SECTIONS_DEFAUT = ['Général','Identification','Mesures','Observations','Validation'];
-
-function ChampForm({ champ = {}, onSave, onCancel }) {
+function ChampForm({ champ = {}, onSave, onCancel, sectionsList }) {
   const [f, setF] = useState({
     nom_champ: champ.nom_champ || '',
     type_champ: champ.type_champ || 'TEXTE',
-    section: champ.section || 'Général',
+    section: champ.section || '',
+    section_id: champ.section_id || '',
     obligatoire: champ.obligatoire || false,
     unite: champ.unite || '',
     placeholder: champ.placeholder || '',
@@ -66,11 +66,15 @@ function ChampForm({ champ = {}, onSave, onCancel }) {
         <div>
           <label className="label text-sm">Section</label>
           <div className="relative">
-            <input list="sections-list" value={f.section} onChange={e => set('section', e.target.value)}
-              placeholder="ex: Mesures" className="input"/>
-            <datalist id="sections-list">
-              {SECTIONS_DEFAUT.map(s => <option key={s} value={s}/>)}
-            </datalist>
+            <select value={f.section_id} onChange={e => {
+              const sec = sectionsList.find(s => s.id === e.target.value);
+              set('section_id', e.target.value);
+              set('section', sec ? sec.titre : '');
+            }} className="input appearance-none pr-8 cursor-pointer">
+              <option value="">-- Sans section --</option>
+              {sectionsList.map(s => <option key={s.id} value={s.id}>{s.titre}</option>)}
+            </select>
+            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
           </div>
         </div>
         <div>
@@ -115,7 +119,7 @@ function ChampForm({ champ = {}, onSave, onCancel }) {
   );
 }
 
-function ChampCard({ champ, idx, onEdit, onSoftDelete, onMove }) {
+function ChampCard({ champ, idx, onEdit, onSoftDelete }) {
   const typeInfo = TYPES_CHAMPS.find(t => t.value === champ.type_champ) || {};
   return (
     <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-200 hover:border-primary/30 hover:shadow-sm transition-all group">
@@ -132,7 +136,6 @@ function ChampCard({ champ, idx, onEdit, onSoftDelete, onMove }) {
         </div>
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs text-gray-400">{typeInfo.label || champ.type_champ}</span>
-          {champ.section && <span className="text-xs text-gray-300">· {champ.section}</span>}
           {champ.unite && <span className="text-xs text-primary/70">({champ.unite})</span>}
         </div>
       </div>
@@ -148,17 +151,66 @@ function ChampCard({ champ, idx, onEdit, onSoftDelete, onMove }) {
   );
 }
 
+function SectionHeader({ section, onEdit, onDelete, onAddField }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(section.titre);
+
+  const handleSave = async () => {
+    if (!name.trim()) return toast.error('Nom requis');
+    await onEdit(section.id, { titre: name.trim() });
+    setEditing(false);
+  };
+
+  return (
+    <div className="flex items-center gap-2 mb-2 px-1 group">
+      <FolderOpen size={16} className="text-primary/60"/>
+      {editing ? (
+        <div className="flex items-center gap-1 flex-1">
+          <input value={name} onChange={e => setName(e.target.value)}
+            className="input text-sm font-semibold py-1 px-2 flex-1"
+            onKeyDown={e => e.key === 'Enter' && handleSave()}
+            autoFocus/>
+          <button onClick={handleSave} className="btn-primary text-xs px-2 py-1 rounded-lg">OK</button>
+          <button onClick={() => setEditing(false)} className="btn-ghost text-xs px-2 py-1 rounded-lg border border-gray-200">Annuler</button>
+        </div>
+      ) : (
+        <>
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide flex-1">{section.titre}</h3>
+          <span className="text-xs text-gray-400">{section.nb_champs || 0} champ(s)</span>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => { setName(section.titre); setEditing(true); }}
+              className="p-1 hover:bg-blue-50 rounded text-blue-500 transition-colors" title="Renommer">
+              <Edit2 size={13}/>
+            </button>
+            <button onClick={() => onAddField(section)}
+              className="p-1 hover:bg-green-50 rounded text-green-500 transition-colors" title="Ajouter un champ">
+              <Plus size={13}/>
+            </button>
+            <button onClick={() => onDelete(section.id)}
+              className="p-1 hover:bg-red-50 rounded text-red-400 transition-colors" title="Supprimer la section">
+              <Trash2 size={13}/>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function FormulaireBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [formulaire, setFormulaire] = useState(null);
+  const [sections, setSections] = useState([]);
   const [champs, setChamps] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [addFieldSection, setAddFieldSection] = useState(null);
   const [editingChamp, setEditingChamp] = useState(null);
   const [saving, setSaving] = useState(false);
   const [editMeta, setEditMeta] = useState(false);
   const [metaForm, setMetaForm] = useState({});
+  const [editingSection, setEditingSection] = useState(null);
 
   const load = async () => {
     setLoading(true);
@@ -166,14 +218,24 @@ export default function FormulaireBuilderPage() {
       const { data: f } = await formulairesAPI.getUn(id);
       setFormulaire(f);
       setMetaForm({ titre: f.titre, description: f.description || '', frequence: f.frequence });
-      // Aplatir les champs depuis les sections
       const allChamps = f.champs || [];
       setChamps(allChamps);
+      // Load sections from API
+      const { data: secs } = await formulairesAPI.getSections(id);
+      setSections(secs || []);
     } catch { toast.error('Erreur de chargement'); navigate('/formulaires'); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [id]);
+
+  // Group champs by section
+  const champsBySection = {};
+  for (const c of champs) {
+    const key = c.section_id || 'non_classes';
+    if (!champsBySection[key]) champsBySection[key] = [];
+    champsBySection[key].push(c);
+  }
 
   const handleAddChamp = async (data) => {
     setSaving(true);
@@ -181,6 +243,7 @@ export default function FormulaireBuilderPage() {
       await formulairesAPI.ajouterChamp(id, { ...data, ordre: champs.length });
       toast.success('Champ ajouté !');
       setShowAddForm(false);
+      setAddFieldSection(null);
       await load();
     } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
     finally { setSaving(false); }
@@ -197,13 +260,53 @@ export default function FormulaireBuilderPage() {
     finally { setSaving(false); }
   };
 
-  const handleSoftDelete = async (champId) => {
-    if (!confirm('Archiver ce champ ? Il ne sera plus visible dans les formulaires.')) return;
+  const handleSoftDeleteChamp = async (champId) => {
+    if (!confirm('Archiver ce champ ?')) return;
     try {
       await formulairesAPI.supprimerChamp(id, champId);
       toast.success('Champ archivé.');
-      setChamps(prev => prev.filter(c => c.id !== champId));
+      await load();
     } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
+  };
+
+  // ── Sections ──────────────────────────────────────────────────
+
+  const handleAddSection = async () => {
+    const name = prompt('Nom de la nouvelle section :');
+    if (!name || !name.trim()) return;
+    setSaving(true);
+    try {
+      await formulairesAPI.ajouterSection(id, { titre: name.trim() });
+      toast.success('Section ajoutée !');
+      await load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
+    finally { setSaving(false); }
+  };
+
+  const handleEditSection = async (sectionId, data) => {
+    setSaving(true);
+    try {
+      await formulairesAPI.modifierSection(id, sectionId, data);
+      toast.success('Section modifiée !');
+      await load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDeleteSection = async (sectionId) => {
+    const section = sections.find(s => s.id === sectionId);
+    const nbChamps = section ? parseInt(section.nb_champs) : 0;
+    const msg = nbChamps > 0
+      ? `Supprimer la section "${section.titre}" ? ${nbChamps} champ(s) seront déplacés hors section.`
+      : `Supprimer la section "${section.titre}" ?`;
+    if (!confirm(msg)) return;
+    setSaving(true);
+    try {
+      await formulairesAPI.supprimerSection(id, sectionId);
+      toast.success('Section archivée.');
+      await load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
+    finally { setSaving(false); }
   };
 
   const handleSoftDeleteFormulaire = async () => {
@@ -226,14 +329,6 @@ export default function FormulaireBuilderPage() {
     finally { setSaving(false); }
   };
 
-  // Grouper par section
-  const sections = {};
-  for (const c of champs) {
-    const s = c.section || 'Général';
-    if (!sections[s]) sections[s] = [];
-    sections[s].push(c);
-  }
-
   if (loading) return (
     <div className="flex justify-center py-20">
       <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"/>
@@ -241,7 +336,7 @@ export default function FormulaireBuilderPage() {
   );
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 pb-12">
       {/* En-tête */}
       <div className="flex items-start gap-4">
         <button onClick={() => navigate('/formulaires')} className="p-2 hover:bg-gray-100 rounded-xl mt-1">
@@ -296,44 +391,104 @@ export default function FormulaireBuilderPage() {
       <div className="card p-4 flex gap-6 text-sm">
         <div><span className="font-bold text-2xl text-primary">{champs.length}</span><span className="text-gray-400 ml-1">champs</span></div>
         <div><span className="font-bold text-2xl text-orange-500">{champs.filter(c=>c.obligatoire).length}</span><span className="text-gray-400 ml-1">obligatoires</span></div>
-        <div><span className="font-bold text-2xl text-gray-600">{Object.keys(sections).length}</span><span className="text-gray-400 ml-1">sections</span></div>
+        <div><span className="font-bold text-2xl text-gray-600">{sections.length}</span><span className="text-gray-400 ml-1">sections</span></div>
       </div>
 
-      {/* Champs par section */}
-      {Object.entries(sections).map(([section, champsSection]) => (
-        <div key={section}>
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">{section}</h3>
-          <div className="space-y-2">
-            {champsSection.map((champ, idx) => (
-              <div key={champ.id}>
-                {editingChamp?.id === champ.id ? (
-                  <ChampForm champ={champ} onSave={handleEditChamp} onCancel={() => setEditingChamp(null)}/>
-                ) : (
-                  <ChampCard champ={champ} idx={idx}
-                    onEdit={c => setEditingChamp(c)}
-                    onSoftDelete={handleSoftDelete}
-                    onMove={() => {}}
-                  />
-                )}
-              </div>
-            ))}
+      {/* Sections et Champs */}
+      <div className="space-y-6">
+        {/* Champs sans section */}
+        {champsBySection['non_classes'] && champsBySection['non_classes'].length > 0 && (
+          <div className="opacity-60">
+            <SectionHeader
+              section={{ id: null, titre: 'Non classés', nb_champs: champsBySection['non_classes'].length }}
+              onEdit={() => {}}
+              onDelete={() => {}}
+              onAddField={(sec) => { setAddFieldSection(null); setShowAddForm(true); }}
+            />
+            <div className="space-y-2">
+              {champsBySection['non_classes'].map((champ, idx) => (
+                <div key={champ.id}>
+                  {editingChamp?.id === champ.id ? (
+                    <ChampForm champ={champ} onSave={handleEditChamp} onCancel={() => setEditingChamp(null)} sectionsList={sections}/>
+                  ) : (
+                    <ChampCard champ={champ} idx={idx}
+                      onEdit={c => setEditingChamp(c)}
+                      onSoftDelete={handleSoftDeleteChamp}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        )}
+
+        {/* Sections issues de l'API */}
+        {sections.map(section => (
+          <div key={section.id}>
+            <SectionHeader
+              section={section}
+              onEdit={handleEditSection}
+              onDelete={handleDeleteSection}
+              onAddField={(sec) => {
+                setAddFieldSection(sec);
+                setShowAddForm(true);
+              }}
+            />
+            <div className="space-y-2">
+              {(champsBySection[section.id] || []).map((champ, idx) => (
+                <div key={champ.id}>
+                  {editingChamp?.id === champ.id ? (
+                    <ChampForm champ={champ} onSave={handleEditChamp} onCancel={() => setEditingChamp(null)} sectionsList={sections}/>
+                  ) : (
+                    <ChampCard champ={champ} idx={idx}
+                      onEdit={c => setEditingChamp(c)}
+                      onSoftDelete={handleSoftDeleteChamp}
+                    />
+                  )}
+                </div>
+              ))}
+              {(!champsBySection[section.id] || champsBySection[section.id].length === 0) && (
+                <div className="text-center py-6 border-2 border-dashed border-gray-100 rounded-xl">
+                  <p className="text-sm text-gray-400 mb-2">Aucun champ dans cette section</p>
+                  <button onClick={() => { setAddFieldSection(section); setShowAddForm(true); }}
+                    className="text-xs text-primary hover:underline">+ Ajouter un champ</button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
 
       {/* Ajouter un champ */}
-      {showAddForm ? (
+      {showAddForm && (
         <div>
-          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">Nouveau champ</h3>
-          <ChampForm onSave={handleAddChamp} onCancel={() => setShowAddForm(false)}/>
+          <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2 px-1">
+            Nouveau champ {addFieldSection ? `dans "${addFieldSection.titre}"` : ''}
+          </h3>
+          <ChampForm
+            champ={addFieldSection ? { section_id: addFieldSection.id, section: addFieldSection.titre } : {}}
+            onSave={handleAddChamp}
+            onCancel={() => { setShowAddForm(false); setAddFieldSection(null); }}
+            sectionsList={sections}
+          />
         </div>
-      ) : (
-        <button onClick={() => setShowAddForm(true)}
-          className="w-full border-2 border-dashed border-gray-200 hover:border-primary/50 rounded-xl py-4
-          flex items-center justify-center gap-2 text-gray-400 hover:text-primary transition-colors">
-          <Plus size={18}/> Ajouter un champ
-        </button>
       )}
+
+      {/* Boutons d'action */}
+      <div className="flex gap-3">
+        {!showAddForm && (
+          <button onClick={() => { setAddFieldSection(null); setShowAddForm(true); }}
+            className="flex-1 border-2 border-dashed border-gray-200 hover:border-primary/50 rounded-xl py-4
+            flex items-center justify-center gap-2 text-gray-400 hover:text-primary transition-colors">
+            <Plus size={18}/> Ajouter un champ
+          </button>
+        )}
+        <button onClick={handleAddSection}
+          className="border-2 border-dashed border-gray-200 hover:border-green-400/50 rounded-xl py-4 px-6
+          flex items-center justify-center gap-2 text-gray-400 hover:text-green-500 transition-colors">
+          <Layers size={18}/> Ajouter une section
+        </button>
+      </div>
     </div>
   );
 }
