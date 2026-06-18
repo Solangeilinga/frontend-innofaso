@@ -74,15 +74,11 @@ export default function App() {
         <Route path="soumissions/:id"           element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><SoumissionDetailPage/></ModuleGuard>}/>
         <Route path="historique"                element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><HistoriquePage/></ModuleGuard>}/>
         <Route path="alertes"                   element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><AlertesPage/></ModuleGuard>}/>
-        <Route path="matieres"                  element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><MatieresPage/></ModuleGuard>}/>
-        <Route path="generateur-excel"          element={<ExcelFormGeneratorPage/>}/>
-
+        
         {/* Maintenance uniquement */}
         <Route path="equipements" element={<ModuleGuard allowed={['MAINTENANCE']}><EquipementsPage/></ModuleGuard>}/>
         <Route path="planning"    element={<ModuleGuard allowed={['MAINTENANCE']}><PlanningPage/></ModuleGuard>}/>
         <Route path="lignes"      element={<ModuleGuard allowed={['MAINTENANCE']}><LignesPage/></ModuleGuard>}/>
-        <Route path="stock"       element={<ModuleGuard allowed={['MAINTENANCE']}><StockPage/></ModuleGuard>}/>
-
         {/* Admin */}
         <Route path="utilisateurs" element={<UtilisateursPage/>}/>
       </Route>

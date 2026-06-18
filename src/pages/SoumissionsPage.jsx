@@ -74,9 +74,18 @@ function ModalValider({ soumission, onClose, onDone }) {
 }
 
 export default function SoumissionsPage() {
-  const { isAdmin, peutValider, moduleScope } = useAuth();
+  const { user, isAdmin, moduleScope } = useAuth();
   const adminUser = isAdmin();
-  const canValider = peutValider();
+
+  // Vérifie si l'utilisateur peut valider UNE soumission selon son module
+  const canValiderSoumission = (soumission) => {
+    if (isAdmin()) return true;
+    const role = user?.role;
+    return (
+      (soumission.module === 'MAINTENANCE' && role === 'RESP_MAINT') ||
+      (soumission.module === 'PRODUCTION'  && role === 'RESP_PROD')
+    );
+  };
   const [searchParams] = useSearchParams();
   const initialFormulaireId = searchParams.get('formulaire_id') || searchParams.get('formulaire') || '';
   const initialModule = searchParams.get('module') || '';
@@ -341,7 +350,7 @@ export default function SoumissionsPage() {
                         <Link to={`/soumissions/${s.id}`} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Voir détail">
                           <Eye size={15} className="text-gray-500"/>
                         </Link>
-                        {canValider && s.statut === 'SOUMIS' && (
+                        {canValiderSoumission(s) && s.statut === 'SOUMIS' && (
                           <button onClick={() => setModalValider(s)}
                             className="flex items-center gap-1 text-xs px-2 py-1 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors">
                             <CheckCircle size={13}/> Valider
