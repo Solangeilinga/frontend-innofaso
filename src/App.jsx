@@ -7,16 +7,13 @@ import DashboardPage from './pages/DashboardPage';
 import FormulaireListPage from './pages/FormulaireListPage';
 import FormulaireBuilderPage from './pages/FormulaireBuilderPage';
 import FormulaireRemplirPage from './pages/FormulaireRemplirPage';
-import ExcelFormGeneratorPage from './pages/ExcelFormGeneratorPage';
 import SoumissionsPage from './pages/SoumissionsPage';
 import SoumissionDetailPage from './pages/SoumissionDetailPage';
 import EquipementsPage from './pages/EquipementsPage';
 import AlertesPage from './pages/AlertesPage';
 import PlanningPage from './pages/PlanningPage';
 import LignesPage from './pages/LignesPage';
-import StockPage from './pages/StockPage';
 import UtilisateursPage from './pages/UtilisateursPage';
-import MatieresPage from './pages/MatieresPage';
 import HistoriquePage from './pages/HistoriquePage';
 import MaintenancierPage from './pages/MaintenancierPage';
 import OperateurPage from './pages/OperateurPage';
@@ -74,11 +71,12 @@ export default function App() {
         <Route path="soumissions/:id"           element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><SoumissionDetailPage/></ModuleGuard>}/>
         <Route path="historique"                element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><HistoriquePage/></ModuleGuard>}/>
         <Route path="alertes"                   element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><AlertesPage/></ModuleGuard>}/>
-        
+
         {/* Maintenance uniquement */}
         <Route path="equipements" element={<ModuleGuard allowed={['MAINTENANCE']}><EquipementsPage/></ModuleGuard>}/>
         <Route path="planning"    element={<ModuleGuard allowed={['MAINTENANCE']}><PlanningPage/></ModuleGuard>}/>
         <Route path="lignes"      element={<ModuleGuard allowed={['MAINTENANCE']}><LignesPage/></ModuleGuard>}/>
+
         {/* Admin */}
         <Route path="utilisateurs" element={<UtilisateursPage/>}/>
       </Route>
