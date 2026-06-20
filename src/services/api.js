@@ -61,6 +61,9 @@ export const formulairesAPI = {
     modifierSection:     (id, sid, d) => api.put(`/formulaires/${id}/sections/${sid}`, d),
     supprimerSection:    (id, sid)    => api.delete(`/formulaires/${id}/sections/${sid}`),
     reordonnerSections:  (id, d)      => api.put(`/formulaires/${id}/sections/reordonner`, d),
+    // Entête
+    getEntete:           id           => api.get(`/formulaires/${id}/entete`),
+    saveEntete:          (id, d)      => api.put(`/formulaires/${id}/entete`, d),
 };
 
 // ── Soumissions ──────────────────────────────────────────────────
@@ -68,7 +71,8 @@ export const soumissionsAPI = {
     lister:   p        => api.get('/soumissions', { params: p }),
     getUne:   id       => api.get(`/soumissions/${id}`),
     creer:    d        => api.post('/soumissions', d),
-    valider:  (id, d)  => api.patch(`/soumissions/${id}/statut`, d),
+    valider:      (id, d) => api.patch(`/soumissions/${id}/statut`, d),
+    updateEntete: (id, d) => api.put(`/soumissions/${id}/entete`, d),
     sync:     d        => api.post('/soumissions/sync', d),
     exporter: p        => api.get('/soumissions/export/excel', { params: p, responseType: 'blob' }),
 };
