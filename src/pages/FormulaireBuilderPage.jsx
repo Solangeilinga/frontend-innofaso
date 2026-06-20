@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { formulairesAPI } from '../services/api';
-import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Plus, Trash2, Edit2, GripVertical, Save, ChevronDown, Eye, EyeOff, Layers, FolderOpen, FileText, Users } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Edit2, GripVertical, Save, ChevronDown, Eye, EyeOff, Layers, FolderOpen } from 'lucide-react';
 
 
 const TYPES_CHAMPS = [
@@ -201,7 +200,6 @@ function SectionHeader({ section, onEdit, onDelete, onAddField }) {
 export default function FormulaireBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
   const [formulaire, setFormulaire] = useState(null);
   const [sections, setSections] = useState([]);
   const [champs, setChamps] = useState([]);
@@ -213,13 +211,6 @@ export default function FormulaireBuilderPage() {
   const [editMeta, setEditMeta] = useState(false);
   const [metaForm, setMetaForm] = useState({});
   const [editingSection, setEditingSection] = useState(null);
-  const [activeTab, setActiveTab] = useState('champs'); // 'champs' | 'entete'
-  const [entete, setEntete] = useState({
-    emetteur_nom: '', emetteur_fonction: '',
-    verificateur_nom: '', verificateur_fonction: '',
-    approbateur_nom: '', approbateur_fonction: '',
-  });
-  const [savingEntete, setSavingEntete] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -229,20 +220,9 @@ export default function FormulaireBuilderPage() {
       setMetaForm({ titre: f.titre, description: f.description || '', frequence: f.frequence });
       const allChamps = f.champs || [];
       setChamps(allChamps);
+      // Load sections from API
       const { data: secs } = await formulairesAPI.getSections(id);
       setSections(secs || []);
-      // Charger l'entête du formulaire
-      try {
-        const { data: ent } = await formulairesAPI.getEntete(id);
-        if (ent) setEntete({
-          emetteur_nom:          ent.emetteur_nom || '',
-          emetteur_fonction:     ent.emetteur_fonction || '',
-          verificateur_nom:      ent.verificateur_nom || '',
-          verificateur_fonction: ent.verificateur_fonction || '',
-          approbateur_nom:       ent.approbateur_nom || '',
-          approbateur_fonction:  ent.approbateur_fonction || '',
-        });
-      } catch (_) {}
     } catch { toast.error('Erreur de chargement'); navigate('/formulaires'); }
     finally { setLoading(false); }
   };
@@ -338,15 +318,6 @@ export default function FormulaireBuilderPage() {
     } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
   };
 
-  const handleSaveEntete = async () => {
-    setSavingEntete(true);
-    try {
-      await formulairesAPI.saveEntete(id, entete);
-      toast.success('Entête sauvegardée !');
-    } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
-    finally { setSavingEntete(false); }
-  };
-
   const handleSaveMeta = async () => {
     setSaving(true);
     try {
@@ -423,76 +394,7 @@ export default function FormulaireBuilderPage() {
         <div><span className="font-bold text-2xl text-gray-600">{sections.length}</span><span className="text-gray-400 ml-1">sections</span></div>
       </div>
 
-      {/* Onglets */}
-      <div className="flex border-b border-border gap-1">
-        {[
-          { key: 'champs', label: 'Champs', icon: <FileText size={15}/> },
-          ...(isAdmin() ? [{ key: 'entete', label: 'Entête officielle', icon: <Users size={15}/> }] : []),
-        ].map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === tab.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {tab.icon}{tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Contenu onglet Entête */}
-      {activeTab === 'entete' && isAdmin() && (
-        <div className="card space-y-5">
-          <div>
-            <h3 className="font-semibold mb-1">Entête officielle du formulaire</h3>
-            <p className="text-sm text-muted-foreground">
-              Ces informations seront affichées automatiquement quand ce formulaire est rempli.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              ['emetteur', 'Émetteur'],
-              ['verificateur', 'Vérificateur'],
-              ['approbateur', 'Approbateur'],
-            ].map(([key, label]) => (
-              <div key={key} className="space-y-3 p-4 bg-muted/30 rounded-xl">
-                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{label}</p>
-                <div>
-                  <label className="label text-xs">Nom</label>
-                  <input
-                    value={entete[`${key}_nom`]}
-                    onChange={e => setEntete(p => ({ ...p, [`${key}_nom`]: e.target.value }))}
-                    placeholder={`Nom du ${label.toLowerCase()}`}
-                    className="input text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="label text-xs">Fonction / Titre</label>
-                  <input
-                    value={entete[`${key}_fonction`]}
-                    onChange={e => setEntete(p => ({ ...p, [`${key}_fonction`]: e.target.value }))}
-                    placeholder="ex: Responsable Maintenance"
-                    className="input text-sm"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          <button
-            onClick={handleSaveEntete}
-            disabled={savingEntete}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Save size={15}/> {savingEntete ? 'Sauvegarde…' : 'Sauvegarder l\'entête'}
-          </button>
-        </div>
-      )}
-
-      {/* Contenu onglet Champs */}
-      {activeTab === 'champs' && (<>
+      {/* Sections et Champs */}
       <div className="space-y-6">
         {/* Champs sans section */}
         {champsBySection['non_classes'] && champsBySection['non_classes'].length > 0 && (
@@ -587,7 +489,6 @@ export default function FormulaireBuilderPage() {
           <Layers size={18}/> Ajouter une section
         </button>
       </div>
-      </>)}
     </div>
   );
 }
