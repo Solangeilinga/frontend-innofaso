@@ -312,31 +312,68 @@ export default function FormulaireRemplirPage() {
         </div>
       </div>
 
-      {/* EN-TÊTE DYNAMIQUE — chargée depuis la définition du formulaire */}
-      <div className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
-        <div className="text-center mb-4">
-          <h1 className="text-xl font-bold text-gray-800">InnoFaso</h1>
-          <h2 className="text-md font-semibold text-gray-700 mt-1">{formulaire.code} — {formulaire.titre}</h2>
+      {/* EN-TÊTE DYNAMIQUE — exactement comme le document papier */}
+      <div className="border border-gray-300 rounded-lg overflow-hidden bg-white shadow-sm text-sm">
+        {/* Ligne 1 : Logo + Code formulaire */}
+        <div className="flex border-b border-gray-300">
+          <div className="flex items-center px-4 py-2 border-r border-gray-300 w-48 flex-shrink-0">
+            <img src="/images/logo.png" alt="InnoFaso" style={{ height: 36, objectFit: 'contain' }}/>
+          </div>
+          <div className="flex-1"/>
+          <div className="flex items-center px-4 py-2 border-l border-gray-300 font-bold text-sm">
+            {formulaire.code}
+          </div>
         </div>
 
+        {/* Ligne 2 : Titre */}
+        <div className="text-center font-bold py-2 border-b border-gray-300 bg-gray-50">
+          {formulaire.titre}
+        </div>
+
+        {/* Ligne 3 : Création / Modification / Page */}
+        {enteteFormulaire && (
+          <div className="flex border-b border-gray-300 text-xs">
+            <div className="flex-1 px-3 py-1.5 border-r border-gray-300">
+              Création le {enteteFormulaire.date_creation
+                ? new Date(enteteFormulaire.date_creation).toLocaleDateString('fr-FR')
+                : '—'}
+            </div>
+            <div className="flex-1 px-3 py-1.5 border-r border-gray-300">
+              Modifié le
+            </div>
+            <div className="flex-1 px-3 py-1.5">
+              Page 1/1
+            </div>
+          </div>
+        )}
+
+        {/* Ligne 4 : Émetteur / Vérificateur / Approbateur */}
         {enteteFormulaire ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+          <div className="flex border-b border-gray-300 text-xs">
             {[
-              ['Émetteur',     enteteFormulaire.emetteur_nom,     enteteFormulaire.emetteur_fonction],
-              ['Vérificateur', enteteFormulaire.verificateur_nom, enteteFormulaire.verificateur_fonction],
-              ['Approbateur',  enteteFormulaire.approbateur_nom,  enteteFormulaire.approbateur_fonction],
-            ].map(([role, nom, fn]) => (
-              <div key={role} className="bg-gray-50 rounded-lg p-3">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">{role}</p>
-                <p className="font-semibold text-gray-800">{nom || '—'}</p>
-                {fn && <p className="text-xs text-gray-500">{fn}</p>}
+              ['Emetteur',     enteteFormulaire.emetteur_nom,     enteteFormulaire.emetteur_date,     enteteFormulaire.emetteur_fonction],
+              ['Vérificateur', enteteFormulaire.verificateur_nom, enteteFormulaire.verificateur_date, enteteFormulaire.verificateur_fonction],
+              ['Approbateur',  enteteFormulaire.approbateur_nom,  enteteFormulaire.approbateur_date,  enteteFormulaire.approbateur_fonction],
+            ].map(([role, nom, date, fn], i) => (
+              <div key={role} className={`flex-1 px-3 py-2 space-y-0.5 ${i < 2 ? 'border-r border-gray-300' : ''}`}>
+                <p><strong>{role} :</strong> {nom || '—'}</p>
+                <p><strong>Date :</strong> {date ? new Date(date).toLocaleDateString('fr-FR') : '—'}</p>
+                <p><strong>Fonction :</strong> {fn || '—'}</p>
+                <p><strong>Signature :</strong></p>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-400 text-center italic">
-            Entête non configurée — contacter l'administrateur.
-          </p>
+          <div className="px-4 py-3 text-xs text-gray-400 italic border-b border-gray-300">
+            Entête non configurée — contactez l'administrateur.
+          </div>
+        )}
+
+        {/* Ligne 5 : Destinataires */}
+        {enteteFormulaire?.destinataires && (
+          <div className="px-3 py-1.5 text-xs">
+            <strong>Destinataires :</strong> {enteteFormulaire.destinataires}
+          </div>
         )}
       </div>
 

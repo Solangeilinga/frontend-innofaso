@@ -215,9 +215,10 @@ export default function FormulaireBuilderPage() {
   const [editingSection, setEditingSection] = useState(null);
   const [activeTab, setActiveTab] = useState('champs'); // 'champs' | 'entete'
   const [entete, setEntete] = useState({
-    emetteur_nom: '', emetteur_fonction: '',
-    verificateur_nom: '', verificateur_fonction: '',
-    approbateur_nom: '', approbateur_fonction: '',
+    emetteur_nom: '', emetteur_fonction: '', emetteur_date: '',
+    verificateur_nom: '', verificateur_fonction: '', verificateur_date: '',
+    approbateur_nom: '', approbateur_fonction: '', approbateur_date: '',
+    destinataires: '', date_creation: '',
   });
   const [savingEntete, setSavingEntete] = useState(false);
 
@@ -237,10 +238,15 @@ export default function FormulaireBuilderPage() {
         if (ent) setEntete({
           emetteur_nom:          ent.emetteur_nom || '',
           emetteur_fonction:     ent.emetteur_fonction || '',
+          emetteur_date:         ent.emetteur_date?.slice(0,10) || '',
           verificateur_nom:      ent.verificateur_nom || '',
           verificateur_fonction: ent.verificateur_fonction || '',
+          verificateur_date:     ent.verificateur_date?.slice(0,10) || '',
           approbateur_nom:       ent.approbateur_nom || '',
           approbateur_fonction:  ent.approbateur_fonction || '',
+          approbateur_date:      ent.approbateur_date?.slice(0,10) || '',
+          destinataires:         ent.destinataires || '',
+          date_creation:         ent.date_creation?.slice(0,10) || '',
         });
       } catch (_) {}
     } catch { toast.error('Erreur de chargement'); navigate('/formulaires'); }
@@ -452,6 +458,18 @@ export default function FormulaireBuilderPage() {
               Ces informations seront affichées automatiquement quand ce formulaire est rempli.
             </p>
           </div>
+
+          {/* Date création + Modification */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="label text-xs">Date de création</label>
+              <input type="date" value={entete.date_creation}
+                onChange={e => setEntete(p => ({ ...p, date_creation: e.target.value }))}
+                className="input text-sm"/>
+            </div>
+          </div>
+
+          {/* 3 blocs : Émetteur / Vérificateur / Approbateur */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               ['emetteur', 'Émetteur'],
@@ -465,22 +483,43 @@ export default function FormulaireBuilderPage() {
                   <input
                     value={entete[`${key}_nom`]}
                     onChange={e => setEntete(p => ({ ...p, [`${key}_nom`]: e.target.value }))}
-                    placeholder={`Nom du ${label.toLowerCase()}`}
+                    placeholder={`ex: T. COMPAORE`}
                     className="input text-sm"
                   />
                 </div>
                 <div>
-                  <label className="label text-xs">Fonction / Titre</label>
+                  <label className="label text-xs">Fonction</label>
                   <input
                     value={entete[`${key}_fonction`]}
                     onChange={e => setEntete(p => ({ ...p, [`${key}_fonction`]: e.target.value }))}
-                    placeholder="ex: Responsable Maintenance"
+                    placeholder="ex: RT, RQRD, DG…"
+                    className="input text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="label text-xs">Date</label>
+                  <input type="date"
+                    value={entete[`${key}_date`]}
+                    onChange={e => setEntete(p => ({ ...p, [`${key}_date`]: e.target.value }))}
                     className="input text-sm"
                   />
                 </div>
               </div>
             ))}
           </div>
+
+          {/* Destinataires */}
+          <div>
+            <label className="label text-xs">Destinataires</label>
+            <input
+              value={entete.destinataires}
+              onChange={e => setEntete(p => ({ ...p, destinataires: e.target.value }))}
+              placeholder="ex: DG, RQRD, CCQ, CAQM, AAQM, CQCP, RT, CM, AM"
+              className="input text-sm"
+            />
+            <p className="text-xs text-muted-foreground mt-1">Séparer par des virgules</p>
+          </div>
+
           <button
             onClick={handleSaveEntete}
             disabled={savingEntete}
