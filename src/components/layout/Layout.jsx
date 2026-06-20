@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import NotificationStream from '../NotificationStream';
 import Header  from './Header';
 
 export default function Layout() {
@@ -19,6 +20,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <NotificationStream />
 
       {/* ── Overlay sombre (mobile) ───────────────────────────── */}
       <div

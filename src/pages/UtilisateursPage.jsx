@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { utilisateursAPI } from '../services/api';
 import { useAuth, ROLE_LABELS } from '../store/auth';
 import toast from 'react-hot-toast';
-import { Plus, UserCheck, UserX, Edit2, ChevronDown, X } from 'lucide-react';
+import { Plus, UserCheck, UserX, Edit2, ChevronDown, X, Shield, Info } from 'lucide-react';
 
 const ROLE_COLORS = {
   ADMIN:      'badge-red',
@@ -10,19 +10,64 @@ const ROLE_COLORS = {
   RESP_PROD:  'badge-green',
   TECHNICIEN: 'badge-yellow',
   OPERATEUR:  'badge-gray',
+  LECTEUR:    'badge-gray',
 };
+
+const ROLE_DESCRIPTIONS = {
+  ADMIN:      { desc: 'Accès total — gestion des utilisateurs, formulaires, configuration', emoji: '👑' },
+  RESP_MAINT: { desc: 'Valide les formulaires maintenance, gère le planning et les équipements', emoji: '🔧' },
+  RESP_PROD:  { desc: 'Valide les formulaires production, gère les plannings production', emoji: '🏭' },
+  TECHNICIEN: { desc: 'Remplit les formulaires maintenance, soumet les rapports d\'intervention', emoji: '⚙️' },
+  OPERATEUR:  { desc: 'Remplit les formulaires production, saisit les données de quart', emoji: '👷' },
+  LECTEUR:    { desc: 'Consultation uniquement — aucune saisie ni validation', emoji: '👁' },
+};
+
+// ── Panneau description des rôles ─────────────────────────────────
+function RolesGuide() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card">
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 w-full text-left">
+        <Shield size={16} className="text-primary"/>
+        <span className="font-medium text-sm">Définition des rôles</span>
+        <ChevronDown size={14} className={`ml-auto text-gray-400 transition-transform ${open ? 'rotate-180':''}`}/>
+      </button>
+      {open && (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {Object.entries(ROLE_DESCRIPTIONS).map(([role, { desc, emoji }]) => (
+            <div key={role} className="flex items-start gap-3 p-3 bg-muted/30 rounded-xl">
+              <span className="text-xl flex-shrink-0">{emoji}</span>
+              <div>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className={`${ROLE_COLORS[role]||'badge-gray'} text-xs`}>
+                    {ROLE_LABELS[role] || role}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ModalUtilisateur({ utilisateur, roles, onClose, onSaved }) {
   const isEdit = !!utilisateur;
   const [f, setF] = useState({
-    nom: utilisateur?.nom || '',
-    prenom: utilisateur?.prenom || '',
-    email: utilisateur?.email || '',
+    nom:          utilisateur?.nom || '',
+    prenom:       utilisateur?.prenom || '',
+    email:        utilisateur?.email || '',
     mot_de_passe: '',
-    role_id: utilisateur?.role_id || (roles[0]?.id || ''),
+    role_id:      utilisateur?.role_id || (roles[0]?.id || ''),
   });
   const [loading, setLoading] = useState(false);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const selectedRole = roles.find(r => r.id === f.role_id);
+  const roleInfo = selectedRole ? ROLE_DESCRIPTIONS[selectedRole.nom] : null;
 
   const submit = async () => {
     if (!f.nom || !f.prenom || !f.email || !f.role_id) return toast.error('Tous les champs sont requis');
@@ -43,7 +88,9 @@ function ModalUtilisateur({ utilisateur, roles, onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal max-w-md p-6 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="font-display text-lg font-bold">{isEdit ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}</h3>
+          <h3 className="font-display text-lg font-bold">
+            {isEdit ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}
+          </h3>
           <button onClick={onClose}><X size={18} className="text-gray-400"/></button>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -62,20 +109,32 @@ function ModalUtilisateur({ utilisateur, roles, onClose, onSaved }) {
         </div>
         <div>
           <label className={isEdit ? 'label text-sm' : 'label-req text-sm'}>
-            Mot de passe {isEdit && <span className="font-normal text-gray-400">(laisser vide pour ne pas changer)</span>}
+            Mot de passe {isEdit && <span className="font-normal text-gray-400">(laisser vide = inchangé)</span>}
           </label>
-          <input type="password" value={f.mot_de_passe} onChange={e => set('mot_de_passe', e.target.value)}
-            placeholder={isEdit ? '••••••••' : 'Minimum 8 caractères'} className="input"/>
+          <input type="password" value={f.mot_de_passe}
+            onChange={e => set('mot_de_passe', e.target.value)}
+            placeholder={isEdit ? '••••••••' : 'Minimum 8 caractères'}
+            className="input"/>
         </div>
         <div>
           <label className="label-req text-sm">Rôle</label>
           <div className="relative">
             <select value={f.role_id} onChange={e => set('role_id', e.target.value)}
               className="input appearance-none pr-8 cursor-pointer">
-              {roles.map(r => <option key={r.id} value={r.id}>{ROLE_LABELS[r.nom] || r.nom}</option>)}
+              {roles.map(r => (
+                <option key={r.id} value={r.id}>
+                  {ROLE_DESCRIPTIONS[r.nom]?.emoji || ''} {ROLE_LABELS[r.nom] || r.nom}
+                </option>
+              ))}
             </select>
             <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
           </div>
+          {roleInfo && (
+            <div className="flex items-start gap-2 mt-2 p-2 bg-blue-50 rounded-lg">
+              <Info size={13} className="text-blue-500 flex-shrink-0 mt-0.5"/>
+              <p className="text-xs text-blue-700">{roleInfo.desc}</p>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 pt-1">
           <button onClick={onClose} className="btn-secondary flex-1">Annuler</button>
@@ -91,10 +150,11 @@ function ModalUtilisateur({ utilisateur, roles, onClose, onSaved }) {
 export default function UtilisateursPage() {
   const { isAdmin } = useAuth();
   const canAdmin = isAdmin();
-  const [users, setUsers] = useState([]);
-  const [roles, setRoles] = useState([]);
+  const [users, setUsers]   = useState([]);
+  const [roles, setRoles]   = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(null); // null | 'create' | utilisateur object
+  const [modal, setModal]   = useState(null);
+  const [filterRole, setFilterRole] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -116,6 +176,8 @@ export default function UtilisateursPage() {
     } catch (err) { toast.error(err.response?.data?.message || 'Erreur'); }
   };
 
+  const filteredUsers = filterRole ? users.filter(u => u.role === filterRole) : users;
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {modal && (
@@ -132,12 +194,26 @@ export default function UtilisateursPage() {
           <h1 className="font-display text-xl font-bold text-gray-900">Utilisateurs</h1>
           <p className="text-sm text-gray-400 mt-0.5">{users.length} compte{users.length>1?'s':''}</p>
         </div>
-        {canAdmin && (
-          <button onClick={() => setModal('create')} className="btn-primary flex items-center gap-2">
-            <Plus size={16}/> Nouvel utilisateur
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <select value={filterRole} onChange={e => setFilterRole(e.target.value)}
+              className="input text-sm w-44 appearance-none pr-8 cursor-pointer">
+              <option value="">Tous les rôles</option>
+              {roles.map(r => (
+                <option key={r.id} value={r.nom}>{ROLE_LABELS[r.nom] || r.nom}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
+          </div>
+          {canAdmin && (
+            <button onClick={() => setModal('create')} className="btn-primary flex items-center gap-2">
+              <Plus size={16}/> Nouvel utilisateur
+            </button>
+          )}
+        </div>
       </div>
+
+      <RolesGuide />
 
       <div className="card p-0 overflow-hidden">
         {loading ? (
@@ -156,7 +232,7 @@ export default function UtilisateursPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {users.map(u => (
+              {filteredUsers.map(u => (
                 <tr key={u.id} className={`hover:bg-gray-50 transition-colors ${!u.actif ? 'opacity-50' : ''}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -168,9 +244,12 @@ export default function UtilisateursPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-500">{u.email}</td>
                   <td className="px-4 py-3">
-                    <span className={ROLE_COLORS[u.role] || 'badge-gray'}>
-                      {ROLE_LABELS[u.role] || u.role}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{ROLE_DESCRIPTIONS[u.role]?.emoji || ''}</span>
+                      <span className={ROLE_COLORS[u.role] || 'badge-gray'}>
+                        {ROLE_LABELS[u.role] || u.role}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span className={u.actif ? 'badge-green' : 'badge-gray'}>

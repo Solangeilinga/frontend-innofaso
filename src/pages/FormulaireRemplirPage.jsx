@@ -217,18 +217,22 @@ export default function FormulaireRemplirPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  const [enteteFormulaire, setEnteteFormulaire] = useState(null);
+
   useEffect(() => {
     Promise.all([
       formulairesAPI.getUn(id),
       equipementsAPI.lister(),
       signatairesAPI.liste(),
+      formulairesAPI.getEntete(id).catch(() => ({ data: null })),
     ])
-      .then(([f, e, s]) => {
+      .then(([f, e, s, ent]) => {
         setFormulaire(f.data);
         setEquipements(e.data?.data || e.data || []);
         setSignataires(s.data || []);
+        setEnteteFormulaire(ent.data || null);
         
-        // ✅ CORRECTION : Pré-remplir les champs DATE et HEURE avec la date/heure actuelle
+        // Pré-remplir les champs DATE et HEURE avec la date/heure actuelle
         const autoVals = {};
         const champs = f.data?.champs || [];
         for (const c of champs) {
@@ -308,34 +312,32 @@ export default function FormulaireRemplirPage() {
         </div>
       </div>
 
-      {/* EN-TÊTE STATIQUE - PUREMENT INFORMATIF (comme sur l'image papier) */}
+      {/* EN-TÊTE DYNAMIQUE — chargée depuis la définition du formulaire */}
       <div className="border border-gray-200 rounded-xl p-5 bg-white shadow-sm">
         <div className="text-center mb-4">
           <h1 className="text-xl font-bold text-gray-800">InnoFaso</h1>
-          <h2 className="text-md font-semibold text-gray-700 mt-1">{formulaire.code} - {formulaire.titre}</h2>
+          <h2 className="text-md font-semibold text-gray-700 mt-1">{formulaire.code} — {formulaire.titre}</h2>
         </div>
 
-        <div className="space-y-2 text-sm">
-          <p><strong className="text-gray-700">Émetteur :</strong> T. COMPAORE</p>
-          <p><strong className="text-gray-700">Date :</strong> 11/09/2023</p>
-          <p><strong className="text-gray-700">Fonction :</strong> RT</p>
-          
-          <div className="border-t border-gray-100 my-2"></div>
-          
-          <p><strong className="text-gray-700">Vérificateur :</strong> C. DABIRE</p>
-          <p><strong className="text-gray-700">Date :</strong> 11/09/2023</p>
-          <p><strong className="text-gray-700">Fonction :</strong> RQRD</p>
-          
-          <div className="border-t border-gray-100 my-2"></div>
-          
-          <p><strong className="text-gray-700">Approbateur :</strong> O. COULIBALY</p>
-          <p><strong className="text-gray-700">Date :</strong> —</p>
-          <p><strong className="text-gray-700">Fonction :</strong> DG</p>
-          
-          <div className="border-t border-gray-100 my-2"></div>
-          
-          <p><strong className="text-gray-700">Destinataires :</strong> DG, RQRD, CCQ, CAQM, AAQM, CQCP, RT, CM, AM</p>
-        </div>
+        {enteteFormulaire ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            {[
+              ['Émetteur',     enteteFormulaire.emetteur_nom,     enteteFormulaire.emetteur_fonction],
+              ['Vérificateur', enteteFormulaire.verificateur_nom, enteteFormulaire.verificateur_fonction],
+              ['Approbateur',  enteteFormulaire.approbateur_nom,  enteteFormulaire.approbateur_fonction],
+            ].map(([role, nom, fn]) => (
+              <div key={role} className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">{role}</p>
+                <p className="font-semibold text-gray-800">{nom || '—'}</p>
+                {fn && <p className="text-xs text-gray-500">{fn}</p>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400 text-center italic">
+            Entête non configurée — contacter l'administrateur.
+          </p>
+        )}
       </div>
 
       <form onSubmit={submit} className="space-y-6">
