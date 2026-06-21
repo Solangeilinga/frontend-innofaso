@@ -97,7 +97,7 @@ export default function FormulaireListPage() {
   const [formulaires, setFormulaires] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [module, setModule] = useState(isAdmin() && moduleScope ? moduleScope : '');
+  const [module, setModule] = useState(moduleScope || '');
   const [frequence, setFrequence] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [showModal, setShowModal] = useState(false);

@@ -88,7 +88,7 @@ export default function SoumissionsPage() {
   };
   const [searchParams] = useSearchParams();
   const initialFormulaireId = searchParams.get('formulaire_id') || searchParams.get('formulaire') || '';
-  const initialModule = searchParams.get('module') || '';
+  const initialModule = searchParams.get('module') || moduleScope || '';
 
   const [data, setData] = useState({ data:[], meta:{ total:0, totalPages:1 } });
   const [page, setPage] = useState(1);
@@ -148,7 +148,7 @@ export default function SoumissionsPage() {
   }, [page, statut, module, formulaireId, dateDebut, dateFin]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { if (adminUser && moduleScope) setModule(moduleScope); }, [adminUser, moduleScope]);
+  // moduleScope est maintenant appliqué dès l'initialisation — plus besoin de useEffect
   useEffect(() => {
     formulairesAPI.lister({ actif: true, module: module || undefined })
       .then(r => setFormulaires(r.data || [])).catch(() => setFormulaires([]));
