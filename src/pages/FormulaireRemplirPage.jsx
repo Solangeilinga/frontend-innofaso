@@ -19,6 +19,12 @@ const CHAMP_SIGNATAIRE_PATTERNS = [
   /responsable/i,
   /approbat/i,
   /vérificat/i,
+  /chef.*quart/i,
+  /quart.*chef/i,
+  /chef.*équipe/i,
+  /agent/i,
+  /technicien/i,
+  /opérateur/i,
 ];
 
 const isSignataireField = (champ) => {
