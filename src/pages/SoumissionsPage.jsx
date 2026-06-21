@@ -102,9 +102,7 @@ export default function SoumissionsPage() {
   
   // ✅ AJOUT : États pour les filtres de période
   const [periode, setPeriode] = useState('');
-  const defaultDateDebut = new Date(new Date().setFullYear(new Date().getFullYear() - 3))
-    .toISOString().split('T')[0];
-  const [dateDebut, setDateDebut] = useState(defaultDateDebut);
+  const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');
 
   // ✅ AJOUT : Fonction pour gérer le changement de période
