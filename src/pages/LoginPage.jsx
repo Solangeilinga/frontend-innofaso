@@ -70,7 +70,10 @@ export default function LoginPage() {
         navigate('/');
       }
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Identifiants incorrects');
+      const msg = err.response?.data?.message
+               || err.response?.data?.error
+               || 'Identifiants incorrects';
+      toast.error(msg);
     } finally { setLoading(false); }
   };
 

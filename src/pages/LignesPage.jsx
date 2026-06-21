@@ -22,7 +22,7 @@ function Modal({ onClose, onCreated, ligne = null }) {
       }
       onCreated();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Erreur');
+      toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur');
     } finally {
       setL(false);
     }
@@ -101,7 +101,7 @@ export default function LignesPage() {
       toast.success('Ligne désactivée');
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Erreur');
+      toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur');
     }
   };
 

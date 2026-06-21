@@ -647,7 +647,7 @@ function PlanningAdmin() {
                 setShowAddCreneau(false);
                 loadPlanning();
               } catch (err) {
-                toast.error(err.response?.data?.error || 'Erreur');
+                toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur');
               }
             }}
             className="space-y-3"

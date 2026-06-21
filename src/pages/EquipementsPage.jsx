@@ -170,7 +170,7 @@ function Modal({ onClose, onCreated }) {
     if (!f.code_ref || !f.nom) return toast.error('Code et nom requis');
     setL(true);
     try { await equipementsAPI.creer(f); toast.success('Équipement créé !'); onCreated(); }
-    catch(err) { toast.error(err.response?.data?.error || 'Erreur'); }
+    catch(err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur'); }
     finally { setL(false); }
   };
 

@@ -158,7 +158,7 @@ export default function SoumissionDetailPage() {
       await soumissionsAPI.valider(id, { statut: 'VALIDE' });
       toast.success('Soumission validée !');
       load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Erreur'); }
+    } catch (err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur'); }
     finally { setValidating(false); }
   };
 
@@ -169,7 +169,7 @@ export default function SoumissionDetailPage() {
       toast.success('Soumission rejetée');
       setShowRejet(false);
       load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Erreur'); }
+    } catch (err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur'); }
     finally { setValidating(false); }
   };
 
@@ -179,7 +179,7 @@ export default function SoumissionDetailPage() {
       toast.success('Entête mise à jour !');
       setEditEntete(false);
       load();
-    } catch (err) { toast.error(err.response?.data?.error || 'Erreur'); }
+    } catch (err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur'); }
   };
 
   if (loading) return (
