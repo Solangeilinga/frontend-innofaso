@@ -4,7 +4,7 @@ import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
   Calendar, ChevronLeft, ChevronRight, History, LayoutGrid,
-  Save, UserPlus, Loader2, Plus, Trash2,
+  Save, UserPlus, Loader2, Plus, Trash2, FileText, X, Check,
 } from 'lucide-react';
 import PlanningConsultation from '../components/planning/PlanningConsultation';
 import { format, parseISO } from 'date-fns';
@@ -49,15 +49,19 @@ function PlanningAdmin() {
   const [assignRow, setAssignRow] = useState(null);
   const [showAddCreneau, setShowAddCreneau] = useState(false);
   const [drafts, setDrafts] = useState({});
+  const [allFormulaires, setAllFormulaires] = useState([]);
+  const [formulairesModal, setFormulairesModal] = useState(null);
 
   useEffect(() => {
     Promise.all([
       planningAPI.listerLignes(),
       planningAPI.listerMaintenanciers(),
+      planningAPI.listerFormulairesDisponibles(),
     ])
-      .then(([l, m]) => {
+      .then(([l, m, f]) => {
         setLignes(l.data?.data || (Array.isArray(l.data) ? l.data : []));
         setMaintenanciers(m.data);
+        setAllFormulaires(Array.isArray(f.data) ? f.data : []);
         if (l.data.length) setSelectedLigne(l.data[0].id);
       })
       .catch(() => toast.error('Erreur chargement des références'));
@@ -117,8 +121,8 @@ function PlanningAdmin() {
           taux_disponibilite: taux,
           taux_cible: li?.taux_cible ?? TAUX_CIBLE,
           cause: li?.cause_indisponibilite || '',
-          observations: li?.observations || '',
           interventions: assigned?.interventions || [],
+          formulaires: assigned?.formulaires || [],
           ligne_code: data.ligne?.code,
         });
       }
@@ -175,7 +179,6 @@ function PlanningAdmin() {
         planning_quart_id: row.planning_quart_id,
         duree_arret_agregee: Number(row.duree_arret) || 0,
         cause_indisponibilite: row.cause,
-        observations: row.observations,
         temps_couverture: Number(row.temps_couverture) || COUVERTURE_DEF,
       });
       toast.success('Enregistré');
@@ -205,7 +208,6 @@ function PlanningAdmin() {
         planning_quart_id: editRow.planning_quart_id,
         duree_arret_agregee: Number(editRow.duree_arret) || 0,
         cause_indisponibilite: editRow.cause,
-        observations: editRow.observations,
         temps_couverture: Number(editRow.temps_couverture) || COUVERTURE_DEF,
       });
       toast.success('Ligne mise à jour');
@@ -333,7 +335,7 @@ function PlanningAdmin() {
                       <th className="px-3 py-3">Taux dispo.</th>
                       <th className="px-3 py-3">Cible</th>
                       <th className="px-3 py-3">Cause</th>
-                      <th className="px-3 py-3">Observations</th>
+                      <th className="px-3 py-3">Formulaires</th>
                       <th className="px-3 py-3">Actions</th>
                     </tr>
                   </thead>
@@ -409,7 +411,6 @@ function PlanningAdmin() {
                                 duree_arret: drafts[row.key]?.duree_arret ?? row.duree_arret,
                                 temps_couverture: drafts[row.key]?.temps_couverture ?? row.temps_couverture,
                                 cause: drafts[row.key]?.cause ?? row.cause,
-                                observations: drafts[row.key]?.observations ?? row.observations,
                               })
                             }
                           />
@@ -426,7 +427,6 @@ function PlanningAdmin() {
                                 temps_couverture: e.target.value,
                                 duree_arret: drafts[row.key]?.duree_arret ?? row.duree_arret,
                                 cause: drafts[row.key]?.cause ?? row.cause,
-                                observations: drafts[row.key]?.observations ?? row.observations,
                               };
                               saveRowInline(merged);
                             }}
@@ -449,7 +449,6 @@ function PlanningAdmin() {
                               saveRowInline({
                                 ...row,
                                 cause: drafts[row.key]?.cause ?? row.cause,
-                                observations: drafts[row.key]?.observations ?? row.observations,
                                 duree_arret: drafts[row.key]?.duree_arret ?? row.duree_arret,
                                 temps_couverture: row.temps_couverture,
                               })
@@ -458,26 +457,19 @@ function PlanningAdmin() {
                           />
                         </td>
                         <td className="px-3 py-2.5">
-                          <input
-                            className="input w-full min-w-[100px] py-1 text-xs"
-                            value={drafts[row.key]?.observations ?? row.observations}
-                            onChange={e =>
-                              setDrafts(p => ({
-                                ...p,
-                                [row.key]: { ...p[row.key], observations: e.target.value },
-                              }))
+                          <button
+                            type="button"
+                            title="Gérer les formulaires"
+                            disabled={!row.planning_quart_id}
+                            onClick={() => setFormulairesModal(row)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2 py-1 text-xs font-medium hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <FileText size={13} />
+                            {row.formulaires.length > 0
+                              ? <span className="rounded-full bg-primary text-primary-foreground px-1.5 text-[10px]">{row.formulaires.length}</span>
+                              : <span className="text-muted-foreground">Taguer</span>
                             }
-                            onBlur={() =>
-                              saveRowInline({
-                                ...row,
-                                observations: drafts[row.key]?.observations ?? row.observations,
-                                cause: drafts[row.key]?.cause ?? row.cause,
-                                duree_arret: drafts[row.key]?.duree_arret ?? row.duree_arret,
-                                temps_couverture: row.temps_couverture,
-                              })
-                            }
-                            placeholder="Observations…"
-                          />
+                          </button>
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex gap-1">
@@ -639,7 +631,6 @@ function PlanningAdmin() {
                     planning_quart_id: pq.id,
                     duree_arret_agregee: Number(fd.get('duree_arret')) || 0,
                     cause_indisponibilite: fd.get('cause') || '',
-                    observations: fd.get('observations') || '',
                     temps_couverture: Number(fd.get('temps_couverture')) || 8,
                   });
                 }
@@ -702,10 +693,6 @@ function PlanningAdmin() {
               <label className="label">Cause</label>
               <input name="cause" className="input" />
             </div>
-            <div>
-              <label className="label">Observations</label>
-              <input name="observations" className="input" />
-            </div>
             <div className="flex gap-2 pt-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => setShowAddCreneau(false)}>
                 Annuler
@@ -758,15 +745,6 @@ function PlanningAdmin() {
                 onChange={e => setEditRow(p => ({ ...p, cause: e.target.value }))}
               />
             </div>
-            <div>
-              <label className="label">Observations</label>
-              <textarea
-                className="input resize-none"
-                rows={2}
-                value={editRow.observations}
-                onChange={e => setEditRow(p => ({ ...p, observations: e.target.value }))}
-              />
-            </div>
             <div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => setEditRow(null)}>Annuler</button>
               <button type="button" className="btn-primary flex-1" onClick={saveLigneEdit}>Sauvegarder</button>
@@ -774,6 +752,105 @@ function PlanningAdmin() {
           </div>
         </Modal>
       )}
+      {formulairesModal && (
+        <FormulairesModal
+          row={formulairesModal}
+          allFormulaires={allFormulaires}
+          onClose={() => setFormulairesModal(null)}
+          onToggle={async (formulaireId) => {
+            try {
+              await planningAPI.toggleFormulaireQuart({
+                planning_quart_id: formulairesModal.planning_quart_id,
+                formulaire_id: formulaireId,
+              });
+              loadPlanning();
+            } catch {
+              toast.error('Erreur lors du tagage du formulaire');
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
+  const taggedIds = new Set((row.formulaires || []).map(f => f.id));
+  const [pending, setPending] = useState(null);
+
+  const handleToggle = async (id) => {
+    setPending(id);
+    await onToggle(id);
+    setPending(null);
+  };
+
+  const byModule = allFormulaires.reduce((acc, f) => {
+    const m = f.module || 'AUTRE';
+    if (!acc[m]) acc[m] = [];
+    acc[m].push(f);
+    return acc;
+  }, {});
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal max-w-lg p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold">Formulaires du quart</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {row.jour_semaine} — {row.quart?.nom}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X size={18} />
+          </button>
+        </div>
+
+        {allFormulaires.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Aucun formulaire disponible.</p>
+        ) : (
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
+            {Object.entries(byModule).map(([module, forms]) => (
+              <div key={module}>
+                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {module}
+                </p>
+                <ul className="space-y-1">
+                  {forms.map(f => {
+                    const tagged = taggedIds.has(f.id);
+                    return (
+                      <li key={f.id}>
+                        <button
+                          type="button"
+                          disabled={pending === f.id}
+                          onClick={() => handleToggle(f.id)}
+                          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition ${
+                            tagged
+                              ? 'border-primary/30 bg-primary/8 text-primary'
+                              : 'border-border bg-card hover:bg-muted'
+                          }`}
+                        >
+                          <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
+                            tagged ? 'border-primary bg-primary' : 'border-border'
+                          }`}>
+                            {tagged && <Check size={11} className="text-primary-foreground" />}
+                          </span>
+                          <span className="flex-1 font-medium">{f.titre}</span>
+                          <span className="text-[10px] text-muted-foreground">{f.code}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-4 flex justify-end">
+          <button type="button" className="btn-primary px-6" onClick={onClose}>Fermer</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -147,6 +147,10 @@ export const planningAPI = {
     listerLignes:         p => api.get('/planning/lignes', { params: p }).catch(() => ({ data: [] })),
     listerQuarts:         () => api.get('/planning/quarts/lister'),
     listerMaintenanciers: () => api.get('/planning/maintenanciers/lister'),
+
+    listerFormulairesDisponibles: () => api.get('/planning/formulaires/disponibles').catch(() => ({ data: [] })),
+    getFormulairesQuart:          id => api.get(`/planning/quart/${id}/formulaires`),
+    toggleFormulaireQuart:        d  => api.post('/planning/quart/formulaire/toggle', d),
 };
 
 // ── Lignes ───────────────────────────────────────────────────────
