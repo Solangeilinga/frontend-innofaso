@@ -233,7 +233,10 @@ export default function PlanningPage() {
                               <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{tache.formulaire_code}</span>
                             </div>
                             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
-                              <span>Assigné à : <strong>{tache[`${activeStep.toLowerCase()}_prenom`] || '?'} {tache[`${activeStep.toLowerCase()}_nom`] || ''}</strong></span>
+                              <span>Assigné à : <strong>
+                                {tache[`${activeStep === 'EXECUTION' ? 'executeur' : activeStep === 'VERIFICATION' ? 'verificateur' : 'validateur'}_prenom`] || '—'}{' '}
+                                {tache[`${activeStep === 'EXECUTION' ? 'executeur' : activeStep === 'VERIFICATION' ? 'verificateur' : 'validateur'}_nom`] || ''}
+                              </strong></span>
                               {tache.date_soumission && (
                                 <span>Soumis le {format(new Date(tache.date_soumission), 'dd/MM/yyyy HH:mm', { locale: fr })}</span>
                               )}
