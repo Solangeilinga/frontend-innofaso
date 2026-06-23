@@ -34,7 +34,15 @@ const CHAMP_SIGNATAIRE_PATTERNS = [
 
 const isSignataireField = (champ) => {
   if (champ.type_champ === 'SIGNATURE') return true;
-  const texte = `${champ.nom_champ || ''} ${champ.label || ''}`;
+  const texte = `${champ.nom_champ || ''} ${champ.label || ''}`.trim();
+  if (!texte) return false;
+  return CHAMP_SIGNATAIRE_PATTERNS.some(p => p.test(texte));
+};
+
+// Retourne true si le champ LISTE doit afficher les utilisateurs plutôt que ses options
+const isSignataireOverride = (champ) => {
+  if (champ.type_champ !== 'LISTE') return false;
+  const texte = `${champ.nom_champ || ''} ${champ.label || ''}`.trim();
   return CHAMP_SIGNATAIRE_PATTERNS.some(p => p.test(texte));
 };
 
@@ -179,6 +187,47 @@ function ChampInput({ champ, value, onChange, signataires = [] }) {
     );
 
   // ── LISTE ────────────────────────────────────────────────────────
+  // Si c'est une LISTE mais que le nom correspond à un signataire → liste utilisateurs
+  if (type_champ === 'LISTE' && isSignataireOverride(champ)) {
+    return (
+      <div>
+        {labelEl}
+        <div className="relative">
+          <select
+            value={value || ''}
+            onChange={e => onChange(e.target.value)}
+            className="input appearance-none pr-10 cursor-pointer"
+          >
+            <option value="">— Sélectionner un signataire —</option>
+            {['ADMIN','RESP_MAINT','RESP_PROD','TECHNICIEN','OPERATEUR'].map(role => {
+              const groupe = signataires.filter(s => s.role === role);
+              if (groupe.length === 0) return null;
+              const labels = {
+                ADMIN:'Administrateurs', RESP_MAINT:'Responsables Maintenance',
+                RESP_PROD:'Responsables Production', TECHNICIEN:'Techniciens',
+                OPERATEUR:'Opérateurs',
+              };
+              return (
+                <optgroup key={role} label={labels[role] || role}>
+                  {groupe.map(s => (
+                    <option key={s.id} value={s.value}>{s.label}</option>
+                  ))}
+                </optgroup>
+              );
+            })}
+            <option value="__libre__">✏️ Saisir manuellement…</option>
+          </select>
+          <UserCheck size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-primary pointer-events-none"/>
+        </div>
+        {value === '__libre__' && (
+          <input type="text" className="input mt-2" placeholder="Nom et fonction"
+            onChange={e => onChange(e.target.value)} autoFocus />
+        )}
+        {aide && <p className="text-xs text-gray-400 mt-1">{aide}</p>}
+      </div>
+    );
+  }
+
   if (type_champ === 'LISTE')
     return (
       <div>
