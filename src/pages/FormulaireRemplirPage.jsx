@@ -25,6 +25,11 @@ const CHAMP_SIGNATAIRE_PATTERNS = [
   /agent/i,
   /technicien/i,
   /opérateur/i,
+  /^\s*CQ\s*$/i,          // exactement "CQ"
+  /\bCQ\b/i,             // "CQ" comme mot entier
+  /chef\s*de\s*quart/i,  // "chef de quart"
+  /c.q./i,
+  /CQd*/i,             // CQ, CQ1, CQ2...             // "C.Q."
 ];
 
 const isSignataireField = (champ) => {
