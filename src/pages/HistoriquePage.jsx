@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { soumissionsAPI, alertesAPI } from '../services/api';
+import { soumissionsAPI, alertesAPI, planningAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
   Eye, ChevronLeft, ChevronRight, FileText, Bell,
-  CheckCircle, Activity, ChevronDown, Calendar, Download, Wrench
+  CheckCircle, Activity, ChevronDown, Calendar, Download, Wrench, AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -56,6 +56,8 @@ export default function HistoriquePage() {
   const [loadingAlertes, setLoadingAlertes] = useState(false);
   const [alertesPage, setAlertesPage]       = useState(1);
   const [alerteType, setAlerteType]         = useState('');
+  const [signalements, setSignalements]     = useState([]);
+  const [loadingSignalements, setLoadingSignalements] = useState(false);
 
   const LIMIT = 20;
 
@@ -101,8 +103,17 @@ export default function HistoriquePage() {
       .finally(() => setLoadingAlertes(false));
   }, [alertesPage, alerteType, activeTab, moduleScope]);
 
-  const totalPages       = Math.ceil(soumissionsTotal / LIMIT);
-  const alertesTotalPages = Math.ceil(alertesTotal / LIMIT);
+  useEffect(() => {
+    if (activeTab !== 'signalements') return;
+    setLoadingSignalements(true);
+    planningAPI.listerSignalements()
+      .then(r => setSignalements(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setSignalements([]))
+      .finally(() => setLoadingSignalements(false));
+  }, [activeTab]);
+
+  const totalPages         = Math.ceil(soumissionsTotal / LIMIT);
+  const alertesTotalPages  = Math.ceil(alertesTotal / LIMIT);
 
   const resetFilters = () => {
     setModule(moduleScope||''); setStatut(''); setPeriode('');
@@ -148,8 +159,9 @@ export default function HistoriquePage() {
       <div className="border-b border-gray-200">
         <div className="flex gap-4">
           {[
-            { id:'soumissions', icon:FileText,  label:'Soumissions',           count:soumissionsTotal },
-            { id:'alertes',     icon:Bell,       label:'Alertes résolues',      count:alertesTotal     },
+            { id:'soumissions',  icon:FileText,  label:'Soumissions',           count:soumissionsTotal },
+            { id:'alertes',      icon:Bell,       label:'Alertes résolues',      count:alertesTotal     },
+            { id:'signalements', icon:AlertTriangle, label:'Pannes signalées',   count:signalements.length },
             ...(isAdmin() ? [{ id:'actions', icon:Activity, label:'Actions utilisateurs', count:null }] : []),
           ].map(({ id, icon: Icon, label, count }) => (
             <button key={id} onClick={() => setActiveTab(id)}
@@ -328,6 +340,51 @@ export default function HistoriquePage() {
                 className="p-1.5 hover:bg-gray-100 rounded-lg disabled:opacity-30"><ChevronRight size={16}/></button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Onglet Pannes signalées ────────────────────────────── */}
+      {activeTab === 'signalements' && (
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted/50 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="px-3 py-3">Date panne</th>
+                  <th className="px-3 py-3">Signalé par</th>
+                  <th className="px-3 py-3">Assigné à</th>
+                  <th className="px-3 py-3">Observation</th>
+                  <th className="px-3 py-3">Statut</th>
+                  <th className="px-3 py-3">Date signalement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loadingSignalements ? (
+                  <tr><td colSpan={6} className="py-12 text-center"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto"/></td></tr>
+                ) : signalements.length === 0 ? (
+                  <tr><td colSpan={6} className="py-12 text-center text-muted-foreground">Aucun signalement.</td></tr>
+                ) : signalements.map(sp => (
+                  <tr key={sp.id} className="border-b border-border/60 hover:bg-muted/30">
+                    <td className="px-3 py-2.5">{sp.date_panne} {sp.heure_panne?.slice(0,5)}</td>
+                    <td className="px-3 py-2.5">{sp.signaleur?.prenom} {sp.signaleur?.nom}</td>
+                    <td className="px-3 py-2.5">{sp.assigne?.prenom} {sp.assigne?.nom}</td>
+                    <td className="px-3 py-2.5 text-xs max-w-[200px] truncate">{sp.observation || '—'}</td>
+                    <td className="px-3 py-2.5">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                        sp.statut === 'signale' ? 'bg-amber-100 text-amber-700' :
+                        sp.statut === 'planifie' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'
+                      }`}>
+                        {sp.statut}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-muted-foreground">
+                      {new Date(sp.cree_le).toLocaleDateString('fr-FR')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

@@ -155,6 +155,13 @@ export const planningAPI = {
     listerFormulairesDisponibles: () => api.get('/planning/formulaires/disponibles').catch(() => ({ data: [] })),
     getFormulairesQuart:          id => api.get(`/planning/quart/${id}/formulaires`),
     toggleFormulaireQuart:        d  => api.post('/planning/quart/formulaire/toggle', d),
+
+    creerSignalementPanne:    d  => api.post('/planning/signalement/creer', d),
+    listerSignalements:       () => api.get('/planning/signalements/lister').catch(() => ({ data: [] })),
+    obtenirCorrectifSemaine:  id => api.get(`/planning/correctif/semaine/${id}`).catch(() => ({ data: [] })),
+    sauvegarderCorrectif:     d  => api.post('/planning/correctif/sauvegarder', d),
+    toggleFormulaireCorrectif:d  => api.post('/planning/correctif/toggle-formulaire', d),
+    listerEquipementsEtLignes:() => api.get('/planning/equipements-et-lignes').catch(() => ({ data: [] })),
 };
 
 // ── Lignes ───────────────────────────────────────────────────────

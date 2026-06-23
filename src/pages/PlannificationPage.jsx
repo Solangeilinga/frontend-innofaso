@@ -4,14 +4,17 @@ import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
   Calendar, ChevronLeft, ChevronRight, History, LayoutGrid,
-  Save, UserPlus, Loader2, Plus, Trash2, FileText, X, Check,
+  Save, UserPlus, Loader2, Plus, Trash2, FileText, X, Check, Search, Wrench, AlertTriangle,
 } from 'lucide-react';
 import { format, parseISO, isPast } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import PlannificationCorrective from './PlannificationCorrective';
 
 const SEMAINES = [1, 2, 3, 4];
 const COUVERTURE_DEF = 8;
+const canEditTimes = (row, isAdminFn, currentUserId) =>
+  !row.locked && (isAdminFn() || row.isExecutor);
 
 function calcTaux(couverture, arret) {
   if (!couverture || couverture <= 0) return 0;
@@ -36,6 +39,7 @@ export default function PlannificationPage() {
 }
 
 function PlanningAdmin({ onBack }) {
+  const { user: currentUser, isAdmin, peutGerer } = useAuth();
   const now = new Date();
 
   const [tab, setTab] = useState('planning');
@@ -57,6 +61,7 @@ function PlanningAdmin({ onBack }) {
   const [allFormulaires, setAllFormulaires] = useState([]);
   const [formulairesModal, setFormulairesModal] = useState(null);
   const [allUsers, setAllUsers] = useState([]);
+  const [histoTab, setHistoTab] = useState('preventif');
 
   useEffect(() => {
     Promise.all([
@@ -100,7 +105,7 @@ function PlanningAdmin({ onBack }) {
 
   useEffect(() => {
     if (tab === 'planning') loadPlanning();
-    else loadHistorique();
+    else if (tab === 'historique') loadHistorique();
   }, [tab, loadPlanning, loadHistorique]);
 
   const weekLocked = data?.date_fin ? isPast(parseISO(data.date_fin)) : false;
@@ -126,11 +131,13 @@ function PlanningAdmin({ onBack }) {
           locked: weekLocked,
           jour_semaine: jour.jour_semaine,
           maintenancier_nom: assigned?.maintenancier_nom,
+          maintenancier_id: assigned?.maintenancier_id,
           co_maintenancier_nom: assigned?.co_maintenancier_nom,
           verificateur_nom: assigned?.verificateur_nom,
           validateur_nom: assigned?.validateur_nom,
           verificateur_id: assigned?.verificateur_id,
           validateur_id: assigned?.validateur_id,
+          isExecutor: currentUser?.id === assigned?.maintenancier_id,
           duree_arret: arret,
           temps_couverture: couverture,
           taux_disponibilite: taux,
@@ -143,7 +150,7 @@ function PlanningAdmin({ onBack }) {
       }
     }
     return out;
-  }, [data]);
+  }, [data, currentUser, weekLocked]);
 
   const shiftMonth = dir => {
     let m = mois + dir;
@@ -274,7 +281,8 @@ function PlanningAdmin({ onBack }) {
 
       <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-1 shadow-sm">
         {[
-          { id: 'planning', label: 'Planning actif', icon: LayoutGrid },
+          { id: 'planning', label: 'Préventif', icon: LayoutGrid },
+          { id: 'correctif', label: 'Correctif', icon: Wrench },
           { id: 'historique', label: 'Historique', icon: History },
         ].map(({ id, label, icon: Icon }) => (
           <button
@@ -403,6 +411,7 @@ function PlanningAdmin({ onBack }) {
                         <td className="px-3 py-2.5">
                           <select
                             className="input py-1 text-xs w-24"
+                            disabled={row.locked || !isAdmin()}
                             value={drafts[row.key]?.ligne_id || row.ligne_id || ''}
                             onChange={e => {
                               const selectedLigne = lignes.find(l => l.id === e.target.value);
@@ -431,7 +440,7 @@ function PlanningAdmin({ onBack }) {
                             step="0.5"
                             min="0"
                             className="input w-16 py-1 text-xs"
-                            disabled={row.locked}
+                            disabled={row.locked || (!isAdmin() && !row.isExecutor)}
                             value={drafts[row.key]?.duree_arret ?? row.duree_arret}
                             onChange={e =>
                               setDrafts(p => ({
@@ -456,7 +465,7 @@ function PlanningAdmin({ onBack }) {
                             type="number"
                             step="0.5"
                             className="input w-16 py-1 text-xs"
-                            disabled={row.locked}
+                            disabled={row.locked || (!isAdmin() && !row.isExecutor)}
                             value={drafts[row.key]?.temps_couverture ?? row.temps_couverture}
                             onChange={e =>
                               setDrafts(p => ({ ...p, [row.key]: { ...p[row.key], temps_couverture: e.target.value } }))
@@ -484,7 +493,7 @@ function PlanningAdmin({ onBack }) {
                             min="0"
                             max="100"
                             className="input w-16 py-1 text-xs"
-                            disabled={row.locked}
+                            disabled={row.locked || (!isAdmin() && !row.isExecutor)}
                             value={drafts[row.key]?.taux_cible ?? row.taux_cible}
                             onChange={e =>
                               setDrafts(p => ({ ...p, [row.key]: { ...p[row.key], taux_cible: e.target.value } }))
@@ -504,7 +513,7 @@ function PlanningAdmin({ onBack }) {
                         <td className="px-3 py-2.5">
                           <input
                             className="input w-full min-w-[100px] py-1 text-xs"
-                            disabled={row.locked}
+                            disabled={row.locked || (!isAdmin() && !row.isExecutor)}
                             value={drafts[row.key]?.cause ?? row.cause}
                             onChange={e =>
                               setDrafts(p => ({ ...p, [row.key]: { ...p[row.key], cause: e.target.value } }))
@@ -598,43 +607,75 @@ function PlanningAdmin({ onBack }) {
         </>
       )}
 
+      {tab === 'correctif' && (
+        <div>
+          <p className="mb-3 text-sm text-muted-foreground">
+            <AlertTriangle size={14} className="mr-1 inline text-amber-500" />
+            Maintenance corrective — planification par semaine
+          </p>
+          <PlannificationCorrective />
+        </div>
+      )}
+
       {tab === 'historique' && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {historique.length === 0 ? (
-            <p className="col-span-full py-12 text-center text-muted-foreground">Aucun historique pour cette période.</p>
-          ) : (
-            historique.map(h => (
-              <div key={h.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-                <div className="text-xs font-semibold uppercase text-primary">
-                  Semaine {String(h.semaine_index).padStart(2, '0')}
-                </div>
-                <div className="mt-1 font-bold">{h.ligne_code}</div>
-                <div className="text-xs text-muted-foreground">
-                  {h.date_debut_semaine} → {h.date_fin_semaine}
-                </div>
-                <div className="mt-3 flex justify-between text-sm">
-                  <span>Arrêt total</span>
-                  <span className="font-semibold text-red-600">{Number(h.total_arret_ligne).toFixed(1)}h</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Disponibilité moy.</span>
-                  <span className={`font-semibold ${tauxClass(h.avg_disponibilite || 0).split(' ')[0]}`}>
-                    {h.avg_disponibilite != null ? `${Number(h.avg_disponibilite).toFixed(1)}%` : '—'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="mt-3 w-full rounded-lg bg-muted py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary"
-                  onClick={() => {
-                    setSemaineIndex(h.semaine_index);
-                    setTab('planning');
-                  }}
-                >
-                  Ouvrir dans le planning
-                </button>
-              </div>
-            ))
+        <div className="space-y-4">
+          <div className="flex gap-2 rounded-lg border border-border bg-card p-1 shadow-sm w-fit">
+            {[
+              { id: 'preventif', label: 'Préventif', icon: LayoutGrid },
+            ].map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setHistoTab(id)}
+                className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-xs font-medium transition ${
+                  histoTab === id ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <Icon size={14} /> {label}
+              </button>
+            ))}
+          </div>
+
+          {histoTab === 'preventif' && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {historique.length === 0 ? (
+                <p className="col-span-full py-12 text-center text-muted-foreground">Aucun historique préventif.</p>
+              ) : (
+                historique.map(h => (
+                  <div key={h.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-primary">
+                      Semaine {String(h.semaine_index).padStart(2, '0')}
+                    </div>
+                    <div className="mt-1 font-bold">{h.ligne_code}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {h.date_debut_semaine} → {h.date_fin_semaine}
+                    </div>
+                    <div className="mt-3 flex justify-between text-sm">
+                      <span>Arrêt total</span>
+                      <span className="font-semibold text-red-600">{Number(h.total_arret_ligne).toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Disponibilité moy.</span>
+                      <span className={`font-semibold ${tauxClass(h.avg_disponibilite || 0).split(' ')[0]}`}>
+                        {h.avg_disponibilite != null ? `${Number(h.avg_disponibilite).toFixed(1)}%` : '—'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="mt-3 w-full rounded-lg bg-muted py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary"
+                      onClick={() => {
+                        setSemaineIndex(h.semaine_index);
+                        setTab('planning');
+                      }}
+                    >
+                      Ouvrir dans le planning
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           )}
+
         </div>
       )}
 
@@ -642,6 +683,7 @@ function PlanningAdmin({ onBack }) {
         <AssignQuartModal
           row={assignRow}
           maintenanciers={maintenanciers}
+          quarts={data?.quarts_ref || []}
           onSave={saveAssign}
           onClose={() => setAssignRow(null)}
         />
@@ -845,6 +887,7 @@ function PlanningAdmin({ onBack }) {
 
 function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
   const [pendingToggle, setPendingToggle] = useState(null);
+  const [filter, setFilter] = useState('');
 
   const taggedIds = new Set((row.formulaires || []).map(f => f.id));
 
@@ -854,7 +897,11 @@ function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
     setPendingToggle(null);
   };
 
-  const byModule = allFormulaires.reduce((acc, f) => {
+  const filtered = allFormulaires.filter(f =>
+    !filter || f.titre.toLowerCase().includes(filter.toLowerCase()) || f.code.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  const byModule = filtered.reduce((acc, f) => {
     const m = f.module || 'AUTRE';
     if (!acc[m]) acc[m] = [];
     acc[m].push(f);
@@ -866,10 +913,9 @@ function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
       <div className="modal max-w-xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold">Taguer des formulaires au quart</h3>
+            <h3 className="text-lg font-bold">Taguer des formulaires</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {row.jour_semaine} — {row.quart?.nom}
-              <span className="ml-2 text-primary">Exécuteur : {row.maintenancier_nom || '—'}</span>
+              {row.jour_semaine} — {row.quart?.nom || row.quart?.nom || ''}
             </p>
           </div>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -877,10 +923,20 @@ function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
           </button>
         </div>
 
-        {allFormulaires.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Aucun formulaire disponible.</p>
+        <div className="relative mb-3">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            className="input w-full pl-8 py-2 text-sm"
+            placeholder="Rechercher un formulaire…"
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+          />
+        </div>
+
+        {filtered.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Aucun résultat.</p>
         ) : (
-          <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+          <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
             {Object.entries(byModule).map(([module, forms]) => (
               <div key={module}>
                 <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -891,24 +947,23 @@ function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
                     const tagged = taggedIds.has(f.id);
                     return (
                       <li key={f.id}>
-                        <button
-                          type="button"
-                          disabled={pendingToggle === f.id}
-                          onClick={() => handleToggle(f.id)}
-                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                        <label
+                          className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
                             tagged
-                              ? 'border border-primary/30 bg-primary/8 text-primary'
-                              : 'border border-border bg-card hover:bg-muted'
+                              ? 'border-primary/30 bg-primary/8 text-primary'
+                              : 'border-border bg-card hover:bg-muted'
                           }`}
                         >
-                          <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
-                            tagged ? 'border-primary bg-primary' : 'border-border'
-                          }`}>
-                            {tagged && <Check size={11} className="text-primary-foreground" />}
-                          </span>
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-primary"
+                            checked={tagged}
+                            disabled={pendingToggle === f.id}
+                            onChange={() => handleToggle(f.id)}
+                          />
                           <span className="flex-1 font-medium">{f.titre}</span>
                           <span className="text-[10px] text-muted-foreground">{f.code}</span>
-                        </button>
+                        </label>
                       </li>
                     );
                   })}
@@ -926,7 +981,7 @@ function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
   );
 }
 
-function AssignQuartModal({ row, maintenanciers, onSave, onClose }) {
+function AssignQuartModal({ row, maintenanciers, quarts = [], onSave, onClose }) {
   const [users, setUsers] = useState([]);
 
   useEffect(() => {
@@ -936,7 +991,7 @@ function AssignQuartModal({ row, maintenanciers, onSave, onClose }) {
   }, []);
 
   return (
-    <Modal title="Assigner le quart" onClose={onClose}>
+    <Modal title="Assigner la maintenance à" onClose={onClose}>
       <form
         onSubmit={e => {
           e.preventDefault();
@@ -954,11 +1009,14 @@ function AssignQuartModal({ row, maintenanciers, onSave, onClose }) {
           {row.jour_semaine} {row.date_jour} — {row.quart.nom}
         </p>
         <div>
-          <label className="label-req">Exécuteur (maintenancier)</label>
+          <label className="label-req">Exécuteur</label>
           <select name="maintenancier_id" className="input" required defaultValue={row.assigned?.maintenancier_id || ''}>
             <option value="">— Choisir —</option>
             {maintenanciers.map(m => (
               <option key={m.id} value={m.id}>{m.prenom} {m.nom}</option>
+            ))}
+            {quarts.map(q => (
+              <option key={q.id} value={`quart_${q.id}`}>{q.nom} ({q.heure_debut}h-{q.heure_fin}h)</option>
             ))}
           </select>
         </div>

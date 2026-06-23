@@ -26,6 +26,11 @@ const TYPE_CFG = {
     cls: 'badge-red', bg: 'bg-red-50 border-red-100', dot: 'bg-red-500',
     lien: '/equipements', lienLabel: 'Voir équipements',
   },
+  MAINTENANCE_CORRECTIVE: {
+    icon: Wrench, label: 'Maintenance corrective',
+    cls: 'badge-purple', bg: 'bg-purple-50 border-purple-100', dot: 'bg-purple-500',
+    lien: '/plannification', lienLabel: 'Planifier',
+  },
   STOCK_BAS: {
     icon: Package, label: 'Stock pièces bas',
     cls: 'badge-yellow', bg: 'bg-yellow-50 border-yellow-100', dot: 'bg-yellow-500',
