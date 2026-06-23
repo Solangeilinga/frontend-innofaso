@@ -29,11 +29,13 @@ const CHAMP_SIGNATAIRE_PATTERNS = [
 
 const isSignataireField = (champ) => {
   if (champ.type_champ === 'SIGNATURE') return true;
-  return CHAMP_SIGNATAIRE_PATTERNS.some(p => p.test(champ.nom_champ));
+  const texte = `${champ.nom_champ || ''} ${champ.label || ''}`;
+  return CHAMP_SIGNATAIRE_PATTERNS.some(p => p.test(texte));
 };
 
 function ChampInput({ champ, value, onChange, signataires = [] }) {
-  const { nom_champ, type_champ, obligatoire, unite, options_liste, placeholder, aide } = champ;
+  const { nom_champ, label, type_champ, obligatoire, unite, options_liste, placeholder, aide } = champ;
+  const displayLabel = label || nom_champ;
 
   const opts = Array.isArray(options_liste)
     ? options_liste
@@ -42,7 +44,7 @@ function ChampInput({ champ, value, onChange, signataires = [] }) {
 
   const labelEl = (
     <label className={obligatoire ? 'label-req' : 'label'}>
-      {nom_champ}
+      {displayLabel}
       {unite && <span className="text-gray-400 font-normal ml-1 text-xs">({unite})</span>}
     </label>
   );
