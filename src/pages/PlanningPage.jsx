@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { processusAPI } from '../services/api';
+import { useNavigate, Link } from 'react-router-dom';
+import { processusAPI, soumissionsAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
   Calendar, ClipboardList, FileCheck, ShieldCheck, Loader2,
   ChevronRight, Send, FileText, MessageSquare, CheckCircle,
+  Eye, ExternalLink, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -331,6 +332,9 @@ export default function PlanningPage() {
 function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIcon, showComment, commentLabel }) {
   const [commentaire, setCommentaire] = useState('');
   const [loading, setLoading] = useState(false);
+  const [soumission, setSoumission] = useState(null);
+  const [showSoumission, setShowSoumission] = useState(false);
+  const [loadingSoum, setLoadingSoum] = useState(false);
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -341,14 +345,46 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
     }
   };
 
+  const toggleSoumission = async () => {
+    if (showSoumission) { setShowSoumission(false); return; }
+    if (soumission) { setShowSoumission(true); return; }
+    if (!tache.soumission_id) { toast.error('Aucune soumission liée à cette tâche'); return; }
+    setLoadingSoum(true);
+    try {
+      const { data } = await soumissionsAPI.getUne(tache.soumission_id);
+      setSoumission(data);
+      setShowSoumission(true);
+    } catch { toast.error('Impossible de charger le formulaire'); }
+    finally { setLoadingSoum(false); }
+  };
+
+  // Grouper les valeurs par section
+  const sections = soumission?.valeurs?.reduce((acc, v) => {
+    const sec = v.section || 'Général';
+    if (!acc[sec]) acc[sec] = [];
+    acc[sec].push(v);
+    return acc;
+  }, {}) || {};
+
+  const renderVal = (v) => {
+    if (v.valeur_booleen !== null && v.valeur_booleen !== undefined)
+      return v.valeur_booleen ? 'Oui ✓' : 'Non ✗';
+    if (v.valeur_nombre !== null && v.valeur_nombre !== undefined)
+      return `${v.valeur_nombre}${v.unite ? ' ' + v.unite : ''}`;
+    if (v.valeur_date) return new Date(v.valeur_date).toLocaleDateString('fr-FR');
+    if (v.valeur_texte) return v.valeur_texte;
+    return '—';
+  };
+
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-md p-6 space-y-4">
+      <div className="modal p-6 space-y-4" style={{ maxWidth: showSoumission ? 720 : 480, width: '95vw' }}>
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold">{title}</h3>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
 
+        {/* Infos formulaire */}
         <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
           <p><span className="font-semibold">Formulaire :</span> {tache.formulaire_titre}</p>
           <p><span className="font-semibold">Code :</span> {tache.formulaire_code}</p>
@@ -357,9 +393,71 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
           )}
         </div>
 
+        {/* Bouton voir le formulaire soumis */}
+        {tache.soumission_id && (
+          <div>
+            <button
+              type="button"
+              onClick={toggleSoumission}
+              disabled={loadingSoum}
+              className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+            >
+              {loadingSoum
+                ? <Loader2 size={14} className="animate-spin"/>
+                : showSoumission ? <ChevronUp size={14}/> : <Eye size={14}/>
+              }
+              {showSoumission ? 'Masquer le formulaire' : 'Voir le formulaire soumis'}
+            </button>
+
+            {showSoumission && soumission && (
+              <div className="mt-3 border border-border rounded-xl overflow-hidden max-h-80 overflow-y-auto">
+                {/* En-tête soumission */}
+                <div className="bg-muted/40 px-4 py-2 border-b border-border flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">
+                    Soumis le {soumission.date_soumission
+                      ? format(new Date(soumission.date_soumission), 'dd/MM/yyyy HH:mm', { locale: fr })
+                      : '—'
+                    }
+                    {' '}par <strong>{soumission.auteur_prenom} {soumission.auteur_nom}</strong>
+                  </div>
+                  <Link
+                    to={`/soumissions/${tache.soumission_id}`}
+                    target="_blank"
+                    className="flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink size={11}/> Ouvrir
+                  </Link>
+                </div>
+
+                {/* Valeurs par section */}
+                {Object.entries(sections).map(([section, valeurs]) => (
+                  <div key={section} className="border-b border-border last:border-0">
+                    <div className="px-4 py-1.5 bg-muted/20 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      {section}
+                    </div>
+                    <div className="divide-y divide-border">
+                      {valeurs.map(v => (
+                        <div key={v.id} className="flex items-start justify-between px-4 py-2 text-xs gap-4">
+                          <span className="text-muted-foreground flex-shrink-0 max-w-[55%]">{v.nom_champ}</span>
+                          <span className="font-medium text-right">{renderVal(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+
+                {Object.keys(sections).length === 0 && (
+                  <p className="p-4 text-xs text-muted-foreground text-center italic">Aucune valeur saisie</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Commentaire */}
         {showComment && (
           <div>
-            <label className="label">{commentaire || 'Commentaire'}</label>
+            <label className="label">{commentLabel || 'Commentaire'}</label>
             <textarea
               value={commentaire}
               onChange={e => setCommentaire(e.target.value)}
