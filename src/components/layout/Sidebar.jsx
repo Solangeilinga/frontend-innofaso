@@ -12,7 +12,7 @@ const nav = [
   { to:'/historique',   label:'Historique',            icon:History,                   modules:['MAINTENANCE','PRODUCTION'] },
   { to:'/alertes',      label:'Alertes',               icon:Bell,                      modules:['MAINTENANCE','PRODUCTION'] },
   { to:'/equipements',  label:'Équipements',           icon:Wrench,                    modules:['MAINTENANCE'] },
-  { to:'/planning',     label:'Planning',              icon:Calendar,                  modules:['MAINTENANCE'] },
+  { to:'/planning',     label:'Planning',              icon:Calendar,                  modules:['MAINTENANCE','PRODUCTION'] },
   { to:'/lignes',       label:'Lignes de production',  icon:Layers,                    modules:['MAINTENANCE'] },
 ];
 

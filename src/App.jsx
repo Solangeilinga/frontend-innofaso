@@ -12,6 +12,7 @@ import SoumissionDetailPage from './pages/SoumissionDetailPage';
 import EquipementsPage from './pages/EquipementsPage';
 import AlertesPage from './pages/AlertesPage';
 import PlanningPage from './pages/PlanningPage';
+import PlannificationPage from './pages/PlannificationPage';
 import LignesPage from './pages/LignesPage';
 import UtilisateursPage from './pages/UtilisateursPage';
 import HistoriquePage from './pages/HistoriquePage';
@@ -72,9 +73,12 @@ export default function App() {
         <Route path="historique"                element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><HistoriquePage/></ModuleGuard>}/>
         <Route path="alertes"                   element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><AlertesPage/></ModuleGuard>}/>
 
+        {/* Processus - visible pour tous */}
+        <Route path="planning"    element={<ModuleGuard allowed={['MAINTENANCE','PRODUCTION']}><PlanningPage/></ModuleGuard>}/>
+
         {/* Maintenance uniquement */}
+        <Route path="plannification" element={<ModuleGuard allowed={['MAINTENANCE']}><PlannificationPage/></ModuleGuard>}/>
         <Route path="equipements" element={<ModuleGuard allowed={['MAINTENANCE']}><EquipementsPage/></ModuleGuard>}/>
-        <Route path="planning"    element={<ModuleGuard allowed={['MAINTENANCE']}><PlanningPage/></ModuleGuard>}/>
         <Route path="lignes"      element={<ModuleGuard allowed={['MAINTENANCE']}><LignesPage/></ModuleGuard>}/>
 
         {/* Admin */}

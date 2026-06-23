@@ -1,869 +1,384 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { planningAPI } from '../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { processusAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
-  Calendar, ChevronLeft, ChevronRight, History, LayoutGrid,
-  Save, UserPlus, Loader2, Plus, Trash2, FileText, X, Check,
+  Calendar, ClipboardList, FileCheck, ShieldCheck, Loader2,
+  ChevronRight, Send, FileText, MessageSquare, CheckCircle,
 } from 'lucide-react';
-import PlanningConsultation from '../components/planning/PlanningConsultation';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-const SEMAINES = [1, 2, 3, 4];
-const TAUX_CIBLE = 90;
-const COUVERTURE_DEF = 8;
+const ETAPES = [
+  { id: 'PLANIFICATION', label: 'Plannification', icon: Calendar, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-200' },
+  { id: 'EXECUTION',     label: 'Exécution',     icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200' },
+  { id: 'VERIFICATION',  label: 'Vérification',  icon: FileCheck, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-200' },
+  { id: 'VALIDATION',    label: 'Validation',    icon: ShieldCheck, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+];
 
-function calcTaux(couverture, arret) {
-  if (!couverture || couverture <= 0) return 0;
-  return Number((((couverture - arret) / couverture) * 100).toFixed(2));
-}
+const userCanSee = (tache, userId, role) => {
+  if (['ADMIN', 'RESP_MAINT', 'RESP_PROD'].includes(role)) return true;
+  return (
+    tache.executeur_id === userId ||
+    tache.verificateur_id === userId ||
+    tache.validateur_id === userId
+  );
+};
 
-function tauxClass(t) {
-  if (t >= TAUX_CIBLE) return 'text-emerald-600 bg-emerald-50';
-  if (t >= 75) return 'text-amber-600 bg-amber-50';
-  return 'text-red-600 bg-red-50';
-}
+const userCanAct = (tache, userId, etape) => {
+  if (etape === 'EXECUTION') return tache.executeur_id === userId;
+  if (etape === 'VERIFICATION') return tache.verificateur_id === userId;
+  if (etape === 'VALIDATION') return tache.validateur_id === userId;
+  return false;
+};
 
 export default function PlanningPage() {
-  const { peutGerer } = useAuth();
-  return peutGerer() ? <PlanningAdmin /> : <PlanningConsultation />;
-}
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [activeStep, setActiveStep] = useState('PLANIFICATION');
+  const [counts, setCounts] = useState({ execution_en_cours: 0, execution_terminee: 0, verification_en_cours: 0, verification_terminee: 0, validation_en_cours: 0, validation_terminee: 0 });
+  const [taches, setTaches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [verifyModal, setVerifyModal] = useState(null);
+  const [validateModal, setValidateModal] = useState(null);
 
-function PlanningAdmin() {
-  const now = new Date();
+  const loadCounts = useCallback(() => {
+    processusAPI.compter({ utilisateur_id: user?.id })
+      .then(r => setCounts(r.data))
+      .catch(() => {});
+  }, [user?.id]);
 
-  const [tab, setTab] = useState('planning');
-  const [lignes, setLignes] = useState([]);
-  const [maintenanciers, setMaintenanciers] = useState([]);
-  const [selectedLigne, setSelectedLigne] = useState('');
-  const [mois, setMois] = useState(now.getMonth() + 1);
-  const [annee, setAnnee] = useState(now.getFullYear());
-  const [semaineIndex, setSemaineIndex] = useState(
-    Math.min(4, Math.ceil(now.getDate() / 7))
-  );
-  const [data, setData] = useState(null);
-  const [historique, setHistorique] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [editRow, setEditRow] = useState(null);
-  const [assignRow, setAssignRow] = useState(null);
-  const [showAddCreneau, setShowAddCreneau] = useState(false);
-  const [drafts, setDrafts] = useState({});
-  const [allFormulaires, setAllFormulaires] = useState([]);
-  const [formulairesModal, setFormulairesModal] = useState(null);
-
-  useEffect(() => {
-    Promise.all([
-      planningAPI.listerLignes(),
-      planningAPI.listerMaintenanciers(),
-      planningAPI.listerFormulairesDisponibles(),
-    ])
-      .then(([l, m, f]) => {
-        setLignes(l.data?.data || (Array.isArray(l.data) ? l.data : []));
-        setMaintenanciers(m.data);
-        setAllFormulaires(Array.isArray(f.data) ? f.data : []);
-        if (l.data.length) setSelectedLigne(l.data[0].id);
-      })
-      .catch(() => toast.error('Erreur chargement des références'));
-  }, []);
-
-  const loadPlanning = useCallback(() => {
-    if (!selectedLigne) return;
+  const loadTaches = useCallback(() => {
+    if (activeStep === 'PLANIFICATION') {
+      setTaches([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-    planningAPI
-      .obtenirPlanningMois({
-        ligne_id: selectedLigne,
-        mois,
-        annee,
-        semaine_index: semaineIndex,
+    processusAPI.lister({ etape: activeStep })
+      .then(r => {
+        const list = Array.isArray(r.data) ? r.data : [];
+        setTaches(list.filter(t => userCanSee(t, user?.id, user?.role)));
       })
-      .then(r => setData(r.data))
-      .catch(() => toast.error('Impossible de charger le planning'))
+      .catch(() => setTaches([]))
       .finally(() => setLoading(false));
-  }, [selectedLigne, mois, annee, semaineIndex]);
+  }, [activeStep, user?.id, user?.role]);
 
-  const loadHistorique = useCallback(() => {
-    if (!selectedLigne) return;
-    planningAPI
-      .listerHistorique({ ligne_id: selectedLigne, mois, annee })
-      .then(r => setHistorique(r.data))
-      .catch(() => toast.error('Erreur historique'));
-  }, [selectedLigne, mois, annee]);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
+  useEffect(() => { loadTaches(); }, [loadTaches]);
 
-  useEffect(() => {
-    if (tab === 'planning') loadPlanning();
-    else loadHistorique();
-  }, [tab, loadPlanning, loadHistorique]);
+  const refresh = () => { loadCounts(); loadTaches(); };
 
-  const rows = useMemo(() => {
-    if (!data?.jours || !data?.quarts_ref) return [];
-    const out = [];
-    for (const jour of data.jours) {
-      for (const quart of data.quarts_ref) {
-        const assigned = (jour.quarts_assignes || []).find(q => q.quart_id === quart.id);
-        const li = assigned?.ligne_intervention;
-        const arret = li?.duree_arret ?? 0;
-        const couverture = li?.temps_couverture ?? COUVERTURE_DEF;
-        const taux = li?.taux_disponibilite ?? calcTaux(couverture, arret);
-        out.push({
-          key: `${jour.id}-${quart.id}`,
-          jour,
-          quart,
-          assigned,
-          planning_quart_id: assigned?.id || null,
-          planning_jour_id: jour.id,
-          date_jour: jour.date_jour,
-          jour_semaine: jour.jour_semaine,
-          maintenancier_nom: assigned?.maintenancier_nom,
-          co_maintenancier_nom: assigned?.co_maintenancier_nom,
-          duree_arret: arret,
-          temps_couverture: couverture,
-          taux_disponibilite: taux,
-          taux_cible: li?.taux_cible ?? TAUX_CIBLE,
-          cause: li?.cause_indisponibilite || '',
-          interventions: assigned?.interventions || [],
-          formulaires: assigned?.formulaires || [],
-          ligne_code: data.ligne?.code,
-        });
-      }
-    }
-    return out;
-  }, [data]);
-
-  const shiftMonth = dir => {
-    let m = mois + dir;
-    let a = annee;
-    if (m > 12) { m = 1; a += 1; }
-    if (m < 1) { m = 12; a -= 1; }
-    setMois(m);
-    setAnnee(a);
+  const handleExecuter = async (tache) => {
+    navigate(`/formulaires/${tache.formulaire_id}/remplir`);
   };
 
-  const moisLabel = format(new Date(annee, mois - 1, 1), 'MMMM yyyy', { locale: fr });
-
-  const saveAssign = async form => {
+  const handleMarquerExecute = async (tacheId) => {
     try {
-      await planningAPI.assignerMaintenancierQuart({
-        planning_jour_id: assignRow.planning_jour_id,
-        quartId: assignRow.quart.id,
-        maintenancier_id: form.maintenancier_id,
-        co_maintenancier_id: form.co_maintenancier_id || null,
-      });
-      toast.success('Assignation enregistrée');
-      setAssignRow(null);
-      loadPlanning();
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'Erreur');
+      await processusAPI.executer(tacheId, {});
+      toast.success('Tâche marquée comme exécutée');
+      refresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de l\'exécution');
     }
   };
 
-  const updateLigneForQuart = async (planningQuartId, ligneId) => {
+  const handleVerifier = async (tache, commentaire) => {
     try {
-      await planningAPI.mettreAJourLigneQuart({
-        planning_quart_id: planningQuartId,
-        ligne_id: ligneId,
-      });
-      toast.success('Ligne mise à jour');
-      loadPlanning();
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'Erreur');
+      await processusAPI.verifier(tache.id, { commentaire });
+      toast.success('Tâche vérifiée avec succès');
+      setVerifyModal(null);
+      refresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la vérification');
     }
   };
 
-  const saveRowInline = async row => {
-    if (!row.planning_quart_id) {
-      return toast.error('Assignez d\'abord un maintenancier');
-    }
+  const handleValider = async (tache, commentaire) => {
     try {
-      await planningAPI.mettreAJourInterventionLigne({
-        planning_quart_id: row.planning_quart_id,
-        duree_arret_agregee: Number(row.duree_arret) || 0,
-        cause_indisponibilite: row.cause,
-        temps_couverture: Number(row.temps_couverture) || COUVERTURE_DEF,
-      });
-      toast.success('Enregistré');
-      loadPlanning();
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'Erreur');
+      await processusAPI.valider(tache.id, { commentaire });
+      toast.success('Tâche validée avec succès');
+      setValidateModal(null);
+      refresh();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur lors de la validation');
     }
   };
 
-  const deleteCreneau = async planningQuartId => {
-    if (!window.confirm('Supprimer ce créneau planifié ?')) return;
-    try {
-      await planningAPI.supprimerPlanningQuart(planningQuartId);
-      toast.success('Créneau supprimé');
-      loadPlanning();
-    } catch {
-      toast.error('Erreur suppression');
-    }
+  const countFor = (etape) => {
+    if (etape === 'EXECUTION') return { enCours: Number(counts.execution_en_cours), terminee: Number(counts.execution_terminee) };
+    if (etape === 'VERIFICATION') return { enCours: Number(counts.verification_en_cours), terminee: Number(counts.verification_terminee) };
+    if (etape === 'VALIDATION') return { enCours: Number(counts.validation_en_cours), terminee: Number(counts.validation_terminee) };
+    return { enCours: 0, terminee: 0 };
   };
-
-  const saveLigneEdit = async () => {
-    if (!editRow?.planning_quart_id) {
-      return toast.error('Assignez d\'abord un maintenancier au quart');
-    }
-    try {
-      await planningAPI.mettreAJourInterventionLigne({
-        planning_quart_id: editRow.planning_quart_id,
-        duree_arret_agregee: Number(editRow.duree_arret) || 0,
-        cause_indisponibilite: editRow.cause,
-        temps_couverture: Number(editRow.temps_couverture) || COUVERTURE_DEF,
-      });
-      toast.success('Ligne mise à jour');
-      setEditRow(null);
-      loadPlanning();
-    } catch (e) {
-      toast.error(e.response?.data?.error || 'Erreur');
-    }
-  };
-
-  const ligneNom = lignes.find(l => l.id === selectedLigne);
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-6 p-4 md:p-6">
+    <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-6">
       <header className="relative overflow-hidden rounded-2xl border border-primary/15 bg-gradient-to-br from-primary/8 via-background to-secondary/5 p-6 shadow-sm">
-        <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-primary">
-              <Calendar size={22} />
-              <span className="text-xs font-semibold uppercase tracking-widest">Maintenance préventive</span>
-            </div>
-            <h1 className="text-2xl font-bold text-foreground md:text-3xl">Planification maintenance</h1>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              En tant qu&apos;admin / responsable, vous planifiez les quarts, maintenanciers et indicateurs.
-              Les techniciens remplissent les interventions via le formulaire corrective (vue statique).
-            </p>
+        <div className="relative z-10">
+          <div className="mb-2 flex items-center gap-2 text-primary">
+            <FileText size={22} />
+            <span className="text-xs font-semibold uppercase tracking-widest">Processus</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowAddCreneau(true)}
-            className="btn-primary inline-flex items-center gap-2 text-sm"
-          >
-            <Plus size={16} /> Ajouter un créneau
-          </button>
+          <h1 className="text-2xl font-bold text-foreground md:text-3xl">Planning — Chaîne de processus</h1>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+            Suivez l&apos;avancement des tâches de la planification à la validation. Chaque étape notifie automatiquement le responsable suivant.
+          </p>
         </div>
       </header>
 
-      <div className="flex flex-wrap gap-2 rounded-xl border border-border bg-card p-1 shadow-sm">
-        {[
-          { id: 'planning', label: 'Planning actif', icon: LayoutGrid },
-          { id: 'historique', label: 'Historique', icon: History },
-        ].map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition sm:flex-none ${
-              tab === id ? 'bg-primary text-primary-foreground shadow' : 'text-muted-foreground hover:bg-muted'
-            }`}
-          >
-            <Icon size={16} /> {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="card-sm flex flex-wrap items-end gap-4">
-        <div className="min-w-[140px] flex-1">
-          <label className="label">Ligne</label>
-          <select value={selectedLigne} onChange={e => setSelectedLigne(e.target.value)} className="select input">
-            {lignes.map(l => (
-              <option key={l.id} value={l.id}>{l.code} — {l.nom}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">Période</label>
-          <div className="flex items-center gap-1 rounded-lg border border-border bg-input px-1">
-            <button type="button" onClick={() => shiftMonth(-1)} className="rounded p-2 hover:bg-muted">
-              <ChevronLeft size={18} />
-            </button>
-            <span className="min-w-[130px] px-2 text-center text-sm font-semibold capitalize">{moisLabel}</span>
-            <button type="button" onClick={() => shiftMonth(1)} className="rounded p-2 hover:bg-muted">
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
-        {tab === 'planning' && (
-          <div className="flex gap-1">
-            {SEMAINES.map(s => (
+      {/* Process Chain */}
+      <div className="relative">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {ETAPES.map((step, idx) => {
+            const c = countFor(step.id);
+            const isActive = activeStep === step.id;
+            const Icon = step.icon;
+            return (
               <button
-                key={s}
+                key={step.id}
                 type="button"
-                onClick={() => setSemaineIndex(s)}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  semaineIndex === s
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:text-foreground'
+                onClick={() => setActiveStep(step.id)}
+                className={`relative flex flex-col items-center gap-2 rounded-2xl border-2 p-5 transition-all ${
+                  isActive
+                    ? `${step.border} ${step.bg} shadow-md scale-[1.02]`
+                    : 'border-border bg-card hover:shadow-sm hover:border-muted-foreground/30'
                 }`}
               >
-                S{String(s).padStart(2, '0')}
+                <div className={`rounded-full p-3 ${isActive ? step.bg : 'bg-muted'}`}>
+                  <Icon size={28} className={isActive ? step.color : 'text-muted-foreground'} />
+                </div>
+                <span className={`text-sm font-bold ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  {idx + 1}. {step.label}
+                </span>
+                {step.id !== 'PLANIFICATION' && (
+                  <div className="flex items-center gap-2 text-xs">
+                    {c.enCours > 0 && (
+                      <span className="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                        {c.enCours} en cours
+                      </span>
+                    )}
+                    {c.terminee > 0 && (
+                      <span className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-600">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        {c.terminee} faite{c.terminee > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {c.enCours === 0 && c.terminee === 0 && (
+                      <span className="text-muted-foreground italic">—</span>
+                    )}
+                  </div>
+                )}
+                {step.id === 'PLANIFICATION' && (
+                  <span className="text-xs text-muted-foreground">Accéder au planning</span>
+                )}
+                {idx < ETAPES.length - 1 && (
+                  <ChevronRight size={18} className="absolute -right-3 top-1/2 -translate-y-1/2 text-muted-foreground/40 hidden md:block" />
+                )}
               </button>
-            ))}
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div className="min-h-[300px]">
+        {activeStep === 'PLANIFICATION' && (
+          <div className="rounded-2xl border border-border bg-card p-8 text-center shadow-sm">
+            <Calendar size={48} className="mx-auto text-primary/40 mb-4" />
+            <h3 className="text-lg font-bold mb-2">Planification des tâches</h3>
+            <p className="text-sm text-muted-foreground max-w-lg mx-auto mb-6">
+              Créez et gérez le planning maintenance : assignez les quarts, tagguez les formulaires,
+              et définissez les exécuteurs, vérificateurs et validateurs pour chaque tâche.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/plannification')}
+              className="btn-primary inline-flex items-center gap-2 px-6 py-3 text-base"
+            >
+              <Calendar size={18} /> Accéder à la planification
+            </button>
           </div>
+        )}
+
+        {activeStep !== 'PLANIFICATION' && (
+          <>
+            {loading ? (
+              <div className="flex h-48 items-center justify-center text-muted-foreground">
+                <Loader2 className="mr-2 animate-spin" size={24} /> Chargement…
+              </div>
+            ) : taches.length === 0 ? (
+              <div className="rounded-2xl border border-border bg-card p-12 text-center shadow-sm">
+                <ClipboardList size={40} className="mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-muted-foreground">Aucune tâche en {activeStep === 'EXECUTION' ? 'exécution' : activeStep === 'VERIFICATION' ? 'vérification' : 'validation'}.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {taches.map(tache => {
+                  const canAct = userCanAct(tache, user?.id, activeStep);
+                  const etapeInfo = ETAPES.find(e => e.id === activeStep);
+                  const Icon = etapeInfo?.icon || FileText;
+                  return (
+                    <div key={tache.id} className="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow transition-shadow">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                          <div className={`rounded-lg p-2 ${etapeInfo?.bg} flex-shrink-0`}>
+                            <Icon size={18} className={etapeInfo?.color} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-semibold text-sm">{tache.formulaire_titre}</h4>
+                              <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">{tache.formulaire_code}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-xs text-muted-foreground">
+                              <span>Assigné à : <strong>{tache[`${activeStep.toLowerCase()}_prenom`] || '?'} {tache[`${activeStep.toLowerCase()}_nom`] || ''}</strong></span>
+                              {tache.date_soumission && (
+                                <span>Soumis le {format(new Date(tache.date_soumission), 'dd/MM/yyyy HH:mm', { locale: fr })}</span>
+                              )}
+                              {tache.commentaire_verification && activeStep === 'VALIDATION' && (
+                                <span className="flex items-center gap-1">
+                                  <MessageSquare size={12} /> Commentaire vérif. : {tache.commentaire_verification}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {canAct && activeStep === 'EXECUTION' && (
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleExecuter(tache)}
+                                className="btn-secondary text-xs py-1.5 px-2.5 inline-flex items-center gap-1"
+                              >
+                                <Send size={13} /> Remplir
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMarquerExecute(tache.id)}
+                                className="btn-primary text-xs py-1.5 px-2.5 inline-flex items-center gap-1"
+                              >
+                                <CheckCircle size={13} /> Marquer exécuté
+                              </button>
+                            </div>
+                          )}
+                          {canAct && activeStep === 'VERIFICATION' && (
+                            <button
+                              type="button"
+                              onClick={() => setVerifyModal(tache)}
+                              className="btn-primary text-xs py-1.5 px-3 inline-flex items-center gap-1"
+                            >
+                              <FileCheck size={13} /> Vérifier
+                            </button>
+                          )}
+                          {canAct && activeStep === 'VALIDATION' && (
+                            <button
+                              type="button"
+                              onClick={() => setValidateModal(tache)}
+                              className="btn-primary text-xs py-1.5 px-3 inline-flex items-center gap-1"
+                            >
+                              <ShieldCheck size={13} /> Valider
+                            </button>
+                          )}
+                          {!canAct && (
+                            <span className="text-xs text-muted-foreground italic">En attente</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {tab === 'planning' && (
-        <>
-          {data && (
-            <p className="text-sm text-muted-foreground">
-              <span className="font-semibold text-foreground">{data.semaine_libelle}</span>
-              {' · '}{data.date_debut} → {data.date_fin}
-              {' · '}<span className="text-primary">{ligneNom?.code}</span>
-            </p>
-          )}
-
-          {loading ? (
-            <div className="flex h-48 items-center justify-center text-muted-foreground">
-              <Loader2 className="mr-2 animate-spin" size={24} /> Chargement…
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1100px] text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/50 text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      <th className="px-3 py-3">Semaine</th>
-                      <th className="px-3 py-3">Date</th>
-                      <th className="px-3 py-3">Quart</th>
-                      <th className="px-3 py-3">Maintenancier</th>
-                      <th className="px-3 py-3">Co-maintenancier</th>
-                      <th className="px-3 py-3">Ligne</th>
-                      <th className="px-3 py-3">Arrêt (h)</th>
-                      <th className="px-3 py-3">Couverture</th>
-                      <th className="px-3 py-3">Taux dispo.</th>
-                      <th className="px-3 py-3">Cible</th>
-                      <th className="px-3 py-3">Cause</th>
-                      <th className="px-3 py-3">Formulaires</th>
-                      <th className="px-3 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(row => (
-                      <tr key={row.key} className="border-b border-border/60 transition hover:bg-primary/[0.03]">
-                        <td className="px-3 py-2.5 font-medium text-primary">
-                          {data?.semaine_libelle?.replace('Semaine ', 'S') || `S${String(semaineIndex).padStart(2, '0')}`}
-                        </td>
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          <div className="font-medium">{row.jour_semaine}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {format(parseISO(row.date_jour), 'dd/MM/yyyy')}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="font-medium">{row.quart.nom}</div>
-                          <div className="text-xs text-muted-foreground">{row.quart.description}</div>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          {row.maintenancier_nom ? (
-                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                              {row.maintenancier_nom}
-                            </span>
-                          ) : (
-                            <span className="text-xs italic text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs">{row.co_maintenancier_nom || '—'}</td>
-                        <td className="px-3 py-2.5">
-                          <select
-                            className="input py-1 text-xs w-24"
-                            value={drafts[row.key]?.ligne_id || row.ligne_id || ''}
-                            onChange={e => {
-                              const selectedLigne = lignes.find(l => l.id === e.target.value);
-                              setDrafts(p => ({
-                                ...p,
-                                [row.key]: { 
-                                  ...p[row.key], 
-                                  ligne_id: e.target.value,
-                                  ligne_code: selectedLigne?.code || ''
-                                }
-                              }));
-                              // Mettre à jour la ligne dans le planning_quart si nécessaire
-                              if (row.planning_quart_id) {
-                                updateLigneForQuart(row.planning_quart_id, e.target.value);
-                              }
-                            }}
-                          >
-                            <option value="">—</option>
-                            {lignes.map(l => (
-                              <option key={l.id} value={l.id}>{l.code}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            className="input w-16 py-1 text-xs"
-                            value={drafts[row.key]?.duree_arret ?? row.duree_arret}
-                            onChange={e =>
-                              setDrafts(p => ({
-                                ...p,
-                                [row.key]: { ...p[row.key], duree_arret: e.target.value },
-                              }))
-                            }
-                            onBlur={() =>
-                              saveRowInline({
-                                ...row,
-                                ...drafts[row.key],
-                                duree_arret: drafts[row.key]?.duree_arret ?? row.duree_arret,
-                                temps_couverture: drafts[row.key]?.temps_couverture ?? row.temps_couverture,
-                                cause: drafts[row.key]?.cause ?? row.cause,
-                              })
-                            }
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <input
-                            type="number"
-                            step="0.5"
-                            className="input w-16 py-1 text-xs"
-                            defaultValue={row.temps_couverture}
-                            onBlur={e => {
-                              const merged = {
-                                ...row,
-                                temps_couverture: e.target.value,
-                                duree_arret: drafts[row.key]?.duree_arret ?? row.duree_arret,
-                                cause: drafts[row.key]?.cause ?? row.cause,
-                              };
-                              saveRowInline(merged);
-                            }}
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${tauxClass(row.taux_disponibilite)}`}>
-                            {Number(row.taux_disponibilite).toFixed(1)}%
-                          </span>
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-muted-foreground">{row.taux_cible}%</td>
-                        <td className="px-3 py-2.5">
-                          <input
-                            className="input w-full min-w-[100px] py-1 text-xs"
-                            value={drafts[row.key]?.cause ?? row.cause}
-                            onChange={e =>
-                              setDrafts(p => ({ ...p, [row.key]: { ...p[row.key], cause: e.target.value } }))
-                            }
-                            onBlur={() =>
-                              saveRowInline({
-                                ...row,
-                                cause: drafts[row.key]?.cause ?? row.cause,
-                                duree_arret: drafts[row.key]?.duree_arret ?? row.duree_arret,
-                                temps_couverture: row.temps_couverture,
-                              })
-                            }
-                            placeholder="Cause…"
-                          />
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <button
-                            type="button"
-                            title="Gérer les formulaires"
-                            disabled={!row.planning_quart_id}
-                            onClick={() => setFormulairesModal(row)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2 py-1 text-xs font-medium hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <FileText size={13} />
-                            {row.formulaires.length > 0
-                              ? <span className="rounded-full bg-primary text-primary-foreground px-1.5 text-[10px]">{row.formulaires.length}</span>
-                              : <span className="text-muted-foreground">Taguer</span>
-                            }
-                          </button>
-                        </td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex gap-1">
-                            <button
-                              type="button"
-                              title="Assigner maintenanciers"
-                              onClick={() => setAssignRow(row)}
-                              className="rounded-lg p-1.5 text-primary hover:bg-primary/10"
-                            >
-                              <UserPlus size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              title="Enregistrer tout"
-                              disabled={!row.assigned}
-                              onClick={() => setEditRow({ ...row, ...drafts[row.key] })}
-                              className="rounded-lg p-1.5 text-foreground hover:bg-muted disabled:opacity-30"
-                            >
-                              <Save size={16} />
-                            </button>
-                            {row.planning_quart_id && (
-                              <button
-                                type="button"
-                                title="Supprimer"
-                                onClick={() => deleteCreneau(row.planning_quart_id)}
-                                className="rounded-lg p-1.5 text-red-600 hover:bg-red-50"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {rows.some(r => r.interventions?.length > 0) && (
-                <div className="border-t border-border bg-muted/30 px-4 py-3">
-                  <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-                    Détail machines (corrective → agrégé sur la ligne)
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {rows.flatMap(r =>
-                      (r.interventions || []).map(i => (
-                        <span
-                          key={i.id}
-                          className="rounded-lg border border-border bg-background px-2 py-1 text-xs"
-                        >
-                          {i.equipement_code}: {i.duree_arret}h
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </>
+      {verifyModal && (
+        <ActionModal
+          title="Vérification de la tâche"
+          tache={verifyModal}
+          onClose={() => setVerifyModal(null)}
+          onConfirm={(commentaire) => handleVerifier(verifyModal, commentaire)}
+          confirmLabel="Confirmer la vérification"
+          confirmIcon={<FileCheck size={16} />}
+          showComment
+          commentLabel="Commentaire de vérification"
+        />
       )}
 
-      {tab === 'historique' && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {historique.length === 0 ? (
-            <p className="col-span-full py-12 text-center text-muted-foreground">Aucun historique pour cette période.</p>
-          ) : (
-            historique.map(h => (
-              <div key={h.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
-                <div className="text-xs font-semibold uppercase text-primary">
-                  Semaine {String(h.semaine_index).padStart(2, '0')}
-                </div>
-                <div className="mt-1 font-bold">{h.ligne_code}</div>
-                <div className="text-xs text-muted-foreground">
-                  {h.date_debut_semaine} → {h.date_fin_semaine}
-                </div>
-                <div className="mt-3 flex justify-between text-sm">
-                  <span>Arrêt total</span>
-                  <span className="font-semibold text-red-600">{Number(h.total_arret_ligne).toFixed(1)}h</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Disponibilité moy.</span>
-                  <span className={`font-semibold ${tauxClass(h.avg_disponibilite || 0).split(' ')[0]}`}>
-                    {h.avg_disponibilite != null ? `${Number(h.avg_disponibilite).toFixed(1)}%` : '—'}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="mt-3 w-full rounded-lg bg-muted py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary"
-                  onClick={() => {
-                    setSemaineIndex(h.semaine_index);
-                    setTab('planning');
-                  }}
-                >
-                  Ouvrir dans le planning
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {assignRow && (
-        <Modal title="Assigner le quart" onClose={() => setAssignRow(null)}>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              const fd = new FormData(e.target);
-              saveAssign({
-                maintenancier_id: fd.get('maintenancier_id'),
-                co_maintenancier_id: fd.get('co_maintenancier_id'),
-              });
-            }}
-            className="space-y-4"
-          >
-            <p className="text-sm text-muted-foreground">
-              {assignRow.jour_semaine} {assignRow.date_jour} — {assignRow.quart.nom}
-            </p>
-            <div>
-              <label className="label-req">Maintenancier</label>
-              <select name="maintenancier_id" className="input" required defaultValue="">
-                <option value="">— Choisir —</option>
-                {maintenanciers.map(m => (
-                  <option key={m.id} value={m.id}>{m.prenom} {m.nom}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Co-maintenancier</label>
-              <select name="co_maintenancier_id" className="input" defaultValue="">
-                <option value="">— Aucun —</option>
-                {maintenanciers.map(m => (
-                  <option key={m.id} value={m.id}>{m.prenom} {m.nom}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => setAssignRow(null)}>Annuler</button>
-              <button type="submit" className="btn-primary flex-1">Enregistrer</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {showAddCreneau && data && (
-        <Modal title="Ajouter un créneau de planning" onClose={() => setShowAddCreneau(false)}>
-          <form
-            onSubmit={async e => {
-              e.preventDefault();
-              const fd = new FormData(e.target);
-              try {
-                const { data: pq } = await planningAPI.assignerMaintenancierQuart({
-                  planning_jour_id: fd.get('planning_jour_id'),
-                  quartId: fd.get('quart_id'),
-                  maintenancier_id: fd.get('maintenancier_id'),
-                  co_maintenancier_id: fd.get('co_maintenancier_id') || null,
-                });
-                if (pq?.id) {
-                  await planningAPI.mettreAJourInterventionLigne({
-                    planning_quart_id: pq.id,
-                    duree_arret_agregee: Number(fd.get('duree_arret')) || 0,
-                    cause_indisponibilite: fd.get('cause') || '',
-                    temps_couverture: Number(fd.get('temps_couverture')) || 8,
-                  });
-                }
-                toast.success('Créneau ajouté');
-                setShowAddCreneau(false);
-                loadPlanning();
-              } catch (err) {
-                toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur');
-              }
-            }}
-            className="space-y-3"
-          >
-            <div>
-              <label className="label-req">Jour</label>
-              <select name="planning_jour_id" className="input" required>
-                {data.jours?.map(j => (
-                  <option key={j.id} value={j.id}>
-                    {j.jour_semaine} {j.date_jour}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label-req">Quart</label>
-              <select name="quart_id" className="input" required>
-                {data.quarts_ref?.map(q => (
-                  <option key={q.id} value={q.id}>{q.nom}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label-req">Maintenancier</label>
-              <select name="maintenancier_id" className="input" required>
-                <option value="">—</option>
-                {maintenanciers.map(m => (
-                  <option key={m.id} value={m.id}>{m.prenom} {m.nom}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Co-maintenancier</label>
-              <select name="co_maintenancier_id" className="input">
-                <option value="">—</option>
-                {maintenanciers.map(m => (
-                  <option key={m.id} value={m.id}>{m.prenom} {m.nom}</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="label">Arrêt (h)</label>
-                <input name="duree_arret" type="number" step="0.5" defaultValue="0" className="input" />
-              </div>
-              <div>
-                <label className="label">Couverture (h)</label>
-                <input name="temps_couverture" type="number" step="0.5" defaultValue="8" className="input" />
-              </div>
-            </div>
-            <div>
-              <label className="label">Cause</label>
-              <input name="cause" className="input" />
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => setShowAddCreneau(false)}>
-                Annuler
-              </button>
-              <button type="submit" className="btn-primary flex-1">Créer</button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
-      {editRow && (
-        <Modal title="Modifier la ligne de production" onClose={() => setEditRow(null)}>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Durée d&apos;arrêt (h)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  className="input"
-                  value={editRow.duree_arret}
-                  onChange={e => setEditRow(p => ({ ...p, duree_arret: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="label">Temps couverture (h)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  className="input"
-                  value={editRow.temps_couverture}
-                  onChange={e => setEditRow(p => ({ ...p, temps_couverture: e.target.value }))}
-                />
-              </div>
-            </div>
-            <p className="text-sm">
-              Taux calculé :{' '}
-              <strong className={tauxClass(calcTaux(editRow.temps_couverture, editRow.duree_arret)).split(' ')[0]}>
-                {calcTaux(editRow.temps_couverture, editRow.duree_arret)}%
-              </strong>
-              {' '}(cible {TAUX_CIBLE}%)
-            </p>
-            <div>
-              <label className="label">Cause</label>
-              <textarea
-                className="input resize-none"
-                rows={2}
-                value={editRow.cause}
-                onChange={e => setEditRow(p => ({ ...p, cause: e.target.value }))}
-              />
-            </div>
-            <div className="flex gap-2">
-              <button type="button" className="btn-secondary flex-1" onClick={() => setEditRow(null)}>Annuler</button>
-              <button type="button" className="btn-primary flex-1" onClick={saveLigneEdit}>Sauvegarder</button>
-            </div>
-          </div>
-        </Modal>
-      )}
-      {formulairesModal && (
-        <FormulairesModal
-          row={formulairesModal}
-          allFormulaires={allFormulaires}
-          onClose={() => setFormulairesModal(null)}
-          onToggle={async (formulaireId) => {
-            try {
-              await planningAPI.toggleFormulaireQuart({
-                planning_quart_id: formulairesModal.planning_quart_id,
-                formulaire_id: formulaireId,
-              });
-              loadPlanning();
-            } catch {
-              toast.error('Erreur lors du tagage du formulaire');
-            }
-          }}
+      {validateModal && (
+        <ActionModal
+          title="Validation de la tâche"
+          tache={validateModal}
+          onClose={() => setValidateModal(null)}
+          onConfirm={(commentaire) => handleValider(validateModal, commentaire)}
+          confirmLabel="Valider la tâche"
+          confirmIcon={<ShieldCheck size={16} />}
+          showComment
+          commentLabel="Commentaire de validation"
         />
       )}
     </div>
   );
 }
 
-function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
-  const taggedIds = new Set((row.formulaires || []).map(f => f.id));
-  const [pending, setPending] = useState(null);
+function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIcon, showComment, commentLabel }) {
+  const [commentaire, setCommentaire] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleToggle = async (id) => {
-    setPending(id);
-    await onToggle(id);
-    setPending(null);
+  const handleSubmit = async () => {
+    setLoading(true);
+    try {
+      await onConfirm(commentaire);
+    } catch {
+      setLoading(false);
+    }
   };
 
-  const byModule = allFormulaires.reduce((acc, f) => {
-    const m = f.module || 'AUTRE';
-    if (!acc[m]) acc[m] = [];
-    acc[m].push(f);
-    return acc;
-  }, {});
-
   return (
     <div className="modal-overlay">
-      <div className="modal max-w-lg p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold">Formulaires du quart</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {row.jour_semaine} — {row.quart?.nom}
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X size={18} />
-          </button>
-        </div>
-
-        {allFormulaires.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Aucun formulaire disponible.</p>
-        ) : (
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
-            {Object.entries(byModule).map(([module, forms]) => (
-              <div key={module}>
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {module}
-                </p>
-                <ul className="space-y-1">
-                  {forms.map(f => {
-                    const tagged = taggedIds.has(f.id);
-                    return (
-                      <li key={f.id}>
-                        <button
-                          type="button"
-                          disabled={pending === f.id}
-                          onClick={() => handleToggle(f.id)}
-                          className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition ${
-                            tagged
-                              ? 'border-primary/30 bg-primary/8 text-primary'
-                              : 'border-border bg-card hover:bg-muted'
-                          }`}
-                        >
-                          <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border ${
-                            tagged ? 'border-primary bg-primary' : 'border-border'
-                          }`}>
-                            {tagged && <Check size={11} className="text-primary-foreground" />}
-                          </span>
-                          <span className="flex-1 font-medium">{f.titre}</span>
-                          <span className="text-[10px] text-muted-foreground">{f.code}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="mt-4 flex justify-end">
-          <button type="button" className="btn-primary px-6" onClick={onClose}>Fermer</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Modal({ title, children, onClose }) {
-  return (
-    <div className="modal-overlay">
-      <div className="modal max-w-md p-6">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="modal max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold">{title}</h3>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
-        {children}
+
+        <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
+          <p><span className="font-semibold">Formulaire :</span> {tache.formulaire_titre}</p>
+          <p><span className="font-semibold">Code :</span> {tache.formulaire_code}</p>
+          {tache.commentaire_verification && (
+            <p><span className="font-semibold">Commentaire vérif. :</span> {tache.commentaire_verification}</p>
+          )}
+        </div>
+
+        {showComment && (
+          <div>
+            <label className="label">{commentaire || 'Commentaire'}</label>
+            <textarea
+              value={commentaire}
+              onChange={e => setCommentaire(e.target.value)}
+              rows={3}
+              className="input resize-none"
+              placeholder="Saisissez un commentaire…"
+            />
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleSubmit}
+            className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : confirmIcon}
+            {loading ? 'Traitement…' : confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );

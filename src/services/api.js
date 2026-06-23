@@ -194,4 +194,16 @@ export const downloadExcel = (blob, filename) => {
     URL.revokeObjectURL(url);
 };
 
+// ── Processus (Workflow) ─────────────────────────────────────────
+export const processusAPI = {
+    lister:      p        => api.get('/processus', { params: p }),
+    getUne:      id       => api.get(`/processus/${id}`),
+    creer:       d        => api.post('/processus', d),
+    assigner:    (id, d)  => api.patch(`/processus/${id}/assigner`, d),
+    executer:    (id, d)  => api.patch(`/processus/${id}/executer`, d),
+    verifier:    (id, d)  => api.patch(`/processus/${id}/verifier`, d),
+    valider:     (id, d)  => api.patch(`/processus/${id}/valider`, d),
+    compter:     p        => api.get('/processus/counts', { params: p }),
+};
+
 export default api;
