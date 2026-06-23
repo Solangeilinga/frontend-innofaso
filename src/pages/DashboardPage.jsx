@@ -4,17 +4,17 @@ import { dashboardAPI, soumissionsAPI, matieresAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import DashboardMaintenancePage from './DashboardMaintenancePage';
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, LineChart, Line
+  XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, LineChart, Line,
 } from 'recharts';
 import {
-  ClipboardList, CheckCircle, AlertTriangle, Clock, TrendingUp,
-  ChevronRight, ArrowRight, Package, Wheat, FileCheck
+  ClipboardList, CheckCircle, AlertTriangle,
+  ChevronRight, ArrowRight, Package, Wheat, FileCheck,
+  Users, Target, Recycle,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-// ── Utilitaires ───────────────────────────────────────────────────────
 const formatDateSafe = (d) => {
   if (!d) return '—';
   try {
@@ -24,8 +24,10 @@ const formatDateSafe = (d) => {
   } catch { return '—'; }
 };
 
-const statutBadge = { VALIDE:'badge-green', SOUMIS:'badge-blue', BROUILLON:'badge-gray', REJETE:'badge-red' };
-const moduleBadge = { MAINTENANCE:'badge-blue', PRODUCTION:'badge-green' };
+const statutBadge = {
+  VALIDE: 'badge-green', SOUMIS: 'badge-blue',
+  BROUILLON: 'badge-gray', REJETE: 'badge-red',
+};
 
 function StatCard({ icon: Icon, label, value, color = 'primary', sub }) {
   const bg = {
@@ -38,10 +40,10 @@ function StatCard({ icon: Icon, label, value, color = 'primary', sub }) {
   };
   return (
     <div className="card flex items-start gap-4">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${bg[color]}`}>
+      <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${bg[color] || bg.primary}`}>
         <Icon size={22}/>
       </div>
-      <div>
+      <div className="min-w-0">
         <p className="text-sm text-gray-500">{label}</p>
         <p className="font-display text-3xl font-bold text-gray-900 mt-0.5">{value ?? '—'}</p>
         {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
@@ -53,72 +55,60 @@ function StatCard({ icon: Icon, label, value, color = 'primary', sub }) {
 // ── Routeur principal ─────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, moduleScope } = useAuth();
-  if (moduleScope === 'MAINTENANCE') return <DashboardMaintenance user={user}/>;
-  if (moduleScope === 'PRODUCTION')  return <DashboardProduction  user={user}/>;
-  // Fallback (ne devrait pas arriver avec le Guard)
+  if (moduleScope === 'MAINTENANCE') return <DashboardMaintenancePage/>;
   return <DashboardProduction user={user}/>;
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// DASHBOARD MAINTENANCE
-// ════════════════════════════════════════════════════════════════════════
-function DashboardMaintenance({ user }) {
-  return <DashboardMaintenancePage/>;
 }
 
 // ════════════════════════════════════════════════════════════════════════
 // DASHBOARD PRODUCTION
 // ════════════════════════════════════════════════════════════════════════
 function DashboardProduction({ user }) {
-  const [stats,    setStats]    = useState(null);
-  const [activite, setActivite] = useState([]);
-  const [retard,   setRetard]   = useState([]);
-  const [kpi,      setKpi]      = useState([]);
-  const [matieres, setMatieres] = useState({ total:0, en_alerte:0, en_rupture:0 });
-  const [pertesMp, setPertesMp] = useState([]);
-  const [loading,  setLoading]  = useState(true);
+  const [stats,     setStats]     = useState(null);
+  const [prod,      setProd]      = useState(null);
+  const [adoption,  setAdoption]  = useState(null);
+  const [activite,  setActivite]  = useState([]);
+  const [matieres,  setMatieres]  = useState({ total: 0, en_alerte: 0, en_rupture: 0 });
+  const [recentes,  setRecentes]  = useState([]);
+  const [loading,   setLoading]   = useState(true);
 
   useEffect(() => {
     Promise.all([
       dashboardAPI.stats(),
+      dashboardAPI.production(),
+      dashboardAPI.adoption(),
       dashboardAPI.activite(),
-      dashboardAPI.retard(),
-      dashboardAPI.kpi(),
       matieresAPI.stats(),
-      // Dernières soumissions filtrées production
       soumissionsAPI.lister({ module: 'PRODUCTION', limit: 8, page: 1 }),
     ])
-      .then(([s, a, r, k, mp, prod]) => {
+      .then(([s, p, ad, ac, mp, rec]) => {
         setStats(s.data || {});
-        setActivite(Array.isArray(a.data) ? a.data.filter(x => x.module === 'PRODUCTION') : []);
-        setRetard(Array.isArray(r.data) ? r.data.filter(x => !x.module || x.module === 'PRODUCTION') : []);
-        setKpi(Array.isArray(k.data) ? k.data : []);
-        setMatieres(mp.data || { total:0, en_alerte:0, en_rupture:0 });
-        setPertesMp(prod.data?.data || []);
+        setProd(p.data || {});
+        setAdoption(ad.data || {});
+        setActivite(Array.isArray(ac.data) ? ac.data : []);
+        setMatieres(mp.data || { total: 0, en_alerte: 0, en_rupture: 0 });
+        setRecentes(rec.data?.data || []);
       })
-      .catch(() => {
-        setStats({}); setActivite([]); setRetard([]); setKpi([]);
-      })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  const totalSoum = stats?.soumissions_30j
-    ? Object.values(stats.soumissions_30j || {}).reduce((a, b) => a + b, 0) : 0;
-  const nbNonLues = stats?.alertes?.NON_LUE || 0;
+  // KPIs calculés
+  const totalPassations = (prod?.passations_quart || [])
+    .reduce((sum, r) => sum + Number(r.nb || 0), 0);
+  const adoptionPct = Number(adoption?.taux_adoption_pct || 0);
+  const adoptionColor = adoptionPct >= 80 ? 'green' : adoptionPct >= 50 ? 'orange' : 'red';
+  const nbAlertes = (stats?.alertes || []).reduce((s, a) => s + Number(a.nb || 0), 0);
 
-  // Graphique soumissions production
-  const chartData = (() => {
-    if (!Array.isArray(kpi) || !kpi.length) return [];
-    const map = {};
-    kpi.forEach(r => {
-      if (!r?.mois) return;
-      const m = format(new Date(r.mois), 'MMM', { locale: fr });
-      if (!map[m]) map[m] = { name: m, SOUMIS: 0, VALIDE: 0 };
-      if (r.statut === 'SOUMIS') map[m].SOUMIS += Number(r.total) || 0;
-      if (r.statut === 'VALIDE') map[m].VALIDE += Number(r.total) || 0;
-    });
-    return Object.values(map).slice(0, 6).reverse();
-  })();
+  // Tendance 7 jours → graphique
+  const tendance = (stats?.tendance_7j || []).map(r => ({
+    jour: r.jour ? format(new Date(r.jour), 'dd/MM', { locale: fr }) : '?',
+    soumissions: Number(r.nb || 0),
+  }));
+
+  // Top 5 opérateurs par soumissions
+  const topOps = [...activite]
+    .sort((a, b) => Number(b.soumis || 0) - Number(a.soumis || 0))
+    .slice(0, 5);
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -128,95 +118,149 @@ function DashboardProduction({ user }) {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+
+      {/* En-tête */}
       <div>
         <h1 className="font-display text-2xl font-bold text-gray-900">
           Bonjour, {user?.prenom} 👋
         </h1>
         <p className="text-gray-500 mt-1 text-sm flex items-center gap-2">
           <span className="badge-green">Production</span>
-          Tableau de bord module production
+          {format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}
         </p>
       </div>
 
-      {/* KPIs */}
+      {/* KPIs production — 30 derniers jours */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard icon={ClipboardList} label="Formulaires actifs"      value={stats?.formulaires_actifs}    color="primary"/>
-        <StatCard icon={TrendingUp}    label="Soumissions (30 jours)"  value={totalSoum}                    color="blue"/>
-        <StatCard icon={AlertTriangle} label="Alertes non lues"        value={nbNonLues}                    color={nbNonLues > 0 ? 'red' : 'primary'}/>
-        <StatCard icon={Clock}         label="Formulaires en retard"   value={stats?.formulaires_en_retard} color="accent"/>
+        <StatCard
+          icon={ClipboardList}
+          label="Passations de quart (30j)"
+          value={totalPassations}
+          color="primary"
+        />
+        <StatCard
+          icon={Package}
+          label="Suivi pertes matières"
+          value={prod?.pertes_matieres ?? 0}
+          color="blue"
+          sub="saisies validées"
+        />
+        <StatCard
+          icon={Recycle}
+          label="Indicateurs déchets"
+          value={prod?.indicateurs_dechets ?? 0}
+          color="accent"
+          sub="fiches remplies"
+        />
+        <StatCard
+          icon={FileCheck}
+          label="Plannings production"
+          value={prod?.plannings_production ?? 0}
+          color="green"
+          sub="soumis ce mois"
+        />
       </div>
 
-      {/* Matières premières */}
+      {/* KPIs transverses */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard icon={Wheat}   label="Total matières premières" value={matieres.total}       color="primary"/>
-        <StatCard icon={AlertTriangle} label="En alerte stock"   value={matieres.en_alerte}   color={matieres.en_alerte > 0 ? 'orange' : 'green'}
-          sub={matieres.en_alerte > 0 ? 'Sous le seuil minimum' : 'Stocks OK'}/>
-        <StatCard icon={Package} label="En rupture totale"       value={matieres.en_rupture}  color={matieres.en_rupture > 0 ? 'red' : 'green'}
-          sub={matieres.en_rupture > 0 ? '⚠️ Réapprovisionnement urgent' : 'Aucune rupture'}/>
+        <StatCard
+          icon={Target}
+          label="Taux d'adoption"
+          value={`${adoptionPct.toFixed(0)} %`}
+          color={adoptionColor}
+          sub={`${adoption?.total_soumis ?? 0} soumis / ${adoption?.total_attendus ?? 0} attendus`}
+        />
+        <StatCard
+          icon={AlertTriangle}
+          label="Alertes non lues"
+          value={nbAlertes}
+          color={nbAlertes > 0 ? 'orange' : 'green'}
+          sub={nbAlertes > 0 ? 'À traiter' : 'Aucune alerte'}
+        />
+        <StatCard
+          icon={Wheat}
+          label="Matières en alerte stock"
+          value={matieres.en_alerte}
+          color={matieres.en_alerte > 0 ? 'red' : 'green'}
+          sub={matieres.en_rupture > 0 ? `${matieres.en_rupture} en rupture totale` : 'Stocks OK'}
+        />
       </div>
 
-      {/* Alertes matières */}
-      {matieres.en_alerte > 0 && (
+      {/* Bannière alerte stock */}
+      {(matieres.en_alerte > 0 || matieres.en_rupture > 0) && (
         <div className="flex items-center gap-3 px-4 py-3 bg-orange-50 border border-orange-200 rounded-xl">
           <AlertTriangle size={18} className="text-orange-500 shrink-0"/>
           <p className="text-sm text-orange-700 font-medium">
-            {matieres.en_alerte} matière{matieres.en_alerte > 1 ? 's' : ''} sous le seuil d'alerte.
+            {matieres.en_rupture > 0
+              ? `${matieres.en_rupture} matière(s) en rupture totale — réapprovisionnement urgent`
+              : `${matieres.en_alerte} matière(s) sous le seuil d'alerte`}
           </p>
           <Link to="/matieres" className="ml-auto text-xs text-orange-600 underline font-medium">
-            Voir les matières →
+            Voir →
           </Link>
         </div>
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Graphique soumissions */}
+
+        {/* Tendance 7 jours */}
         <div className="card xl:col-span-2">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-display text-lg font-semibold text-gray-900">
-              Activité production — 6 derniers mois
-            </h3>
-          </div>
-          {chartData.length > 0 ? (
+          <h3 className="font-display text-lg font-semibold text-gray-900 mb-4">
+            Soumissions — 7 derniers jours
+          </h3>
+          {tendance.length > 0 ? (
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData} barGap={4}>
+              <LineChart data={tendance}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0"/>
-                <XAxis dataKey="name" tick={{ fontSize: 12 }}/>
-                <YAxis tick={{ fontSize: 12 }}/>
-                <Tooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.1)' }}/>
-                <Bar dataKey="SOUMIS" fill="#86efac" radius={[6,6,0,0]} name="Soumis"/>
-                <Bar dataKey="VALIDE" fill="#16a34a" radius={[6,6,0,0]} name="Validés"/>
-              </BarChart>
+                <XAxis dataKey="jour" tick={{ fontSize: 12 }}/>
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false}/>
+                <Tooltip
+                  contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.1)' }}
+                  formatter={v => [v, 'Soumissions']}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="soumissions"
+                  stroke="#16a34a"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: '#16a34a' }}
+                  name="Soumissions"
+                />
+              </LineChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-56 flex items-center justify-center text-gray-300 text-sm">
-              Aucune donnée disponible
+            <div className="h-56 flex flex-col items-center justify-center text-gray-300 gap-2">
+              <CheckCircle size={32} className="text-gray-200"/>
+              <p className="text-sm">Aucune soumission ces 7 derniers jours</p>
             </div>
           )}
         </div>
 
-        {/* Formulaires en retard */}
+        {/* Top opérateurs */}
         <div className="card">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display text-lg font-semibold text-gray-900">En retard</h3>
-            <Link to="/formulaires" className="text-primary text-xs hover:underline flex items-center gap-1">
-              Voir tout <ChevronRight size={14}/>
-            </Link>
+            <h3 className="font-display text-lg font-semibold text-gray-900">Top opérateurs</h3>
+            <Users size={18} className="text-gray-400"/>
           </div>
-          <div className="space-y-2">
-            {retard.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
-                <CheckCircle size={32} className="mx-auto mb-2 text-green-400"/>
-                <p className="text-sm">Tout est à jour !</p>
-              </div>
-            ) : retard.slice(0, 7).map((f, i) => (
-              <div key={f.id || i}
-                className="flex items-start gap-3 p-3 rounded-xl bg-red-50 border border-red-100">
-                <div className="w-2 h-2 bg-red-500 rounded-full mt-1.5 flex-shrink-0"/>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{f.titre}</p>
-                  <p className="text-xs text-red-600 mt-0.5">
-                    {f.jours_retard ? `${f.jours_retard}j de retard` : 'Jamais soumis'}
-                  </p>
+          <div className="space-y-3">
+            {topOps.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">Aucune activité récente</p>
+            ) : topOps.map((u, i) => (
+              <div key={u.id} className="flex items-center gap-3">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                  i === 0 ? 'bg-yellow-100 text-yellow-700' :
+                  i === 1 ? 'bg-gray-100 text-gray-600' :
+                  'bg-primary/10 text-primary'
+                }`}>
+                  {i + 1}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-800 truncate">{u.prenom} {u.nom}</p>
+                  <p className="text-xs text-gray-400">{u.role}</p>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <span className="text-sm font-bold text-primary">{u.soumis ?? 0}</span>
+                  <p className="text-xs text-gray-400">soumis</p>
                 </div>
               </div>
             ))}
@@ -224,7 +268,7 @@ function DashboardProduction({ user }) {
         </div>
       </div>
 
-      {/* Activité récente production */}
+      {/* Soumissions récentes */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-display text-lg font-semibold text-gray-900">
@@ -245,13 +289,13 @@ function DashboardProduction({ user }) {
               </tr>
             </thead>
             <tbody>
-              {pertesMp.length === 0 ? (
+              {recentes.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="text-center py-8 text-gray-400 text-sm">
-                    Aucune soumission récente en Production
+                    Aucune soumission production récente
                   </td>
                 </tr>
-              ) : pertesMp.map(a => (
+              ) : recentes.map(a => (
                 <tr key={a.id} className="tr">
                   <td className="td">
                     <Link to={`/soumissions/${a.id}`}
@@ -279,9 +323,9 @@ function DashboardProduction({ user }) {
       {/* Raccourcis rapides */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { to: '/formulaires', icon: ClipboardList, label: 'Remplir un formulaire', color: 'bg-primary/10 text-primary' },
-          { to: '/matieres',    icon: Wheat,         label: 'Gérer les matières',    color: 'bg-green-100 text-green-700' },
-          { to: '/soumissions', icon: FileCheck,     label: 'Voir les soumissions',  color: 'bg-blue-100 text-blue-700' },
+          { to: '/formulaires', icon: ClipboardList, label: 'Remplir un formulaire',  color: 'bg-primary/10 text-primary' },
+          { to: '/matieres',    icon: Wheat,         label: 'Gérer les matières',     color: 'bg-green-100 text-green-700' },
+          { to: '/soumissions', icon: FileCheck,     label: 'Voir les soumissions',   color: 'bg-blue-100 text-blue-700' },
         ].map(({ to, icon: Icon, label, color }) => (
           <Link key={to} to={to}
             className="card flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer">

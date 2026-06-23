@@ -107,49 +107,29 @@ export default function DashboardMaintenancePage() {
   const moisNom = format(new Date(annee, mois - 1, 1), 'MMMM yyyy', { locale: fr });
   const kpis = synthese?.kpis || {};
   const parMaint = Array.isArray(synthese?.par_maintenancier) ? synthese.par_maintenancier : [];
+  const parFormulaire = Array.isArray(synthese?.par_formulaire) ? synthese.par_formulaire : [];
 
-  const tauxSousCible = Number(kpis.disponibilite_moyenne || 0) < 90 && kpis.nb_interventions > 0;
+  const tauxSousCible = Number(kpis.taux_validation || 0) < 80 && kpis.nb_interventions > 0;
 
   const groupedMaint = useMemo(() => {
-    const map = {};
-    for (const row of parMaint) {
-      const nom = row.maintenancier_nom || 'Inconnu';
-      if (!map[nom]) {
-        map[nom] = {
-          maintenancier_nom: nom,
-          lignes: new Set(),
-          nb_interventions: 0,
-          heures: 0,
-          tauxSum: 0,
-          tauxN: 0,
-          commentaires: [],
-        };
-      }
-      map[nom].lignes.add(row.ligne_code);
-      map[nom].nb_interventions += Number(row.nb_interventions || 0);
-      map[nom].heures += Number(row.total_maintenance_corrective_heures || row.total_duree_arret || 0);
-      if (row.avg_taux_disponibilite != null) {
-        map[nom].tauxSum += Number(row.avg_taux_disponibilite);
-        map[nom].tauxN += 1;
-      }
-      if (row.commentaires || row.causes) {
-        map[nom].commentaires.push(row.commentaires || row.causes);
-      }
-    }
-    return Object.values(map).map(m => ({
-      ...m,
-      lignes: [...m.lignes].join(', '),
-      taux_moyen: m.tauxN ? m.tauxSum / m.tauxN : null,
-      commentaire: [...new Set(m.commentaires.filter(Boolean))].join(' · ') || '—',
+    return parMaint.map(row => ({
+      maintenancier_nom: row.maintenancier_nom || 'Inconnu',
+      lignes: '—',
+      nb_interventions: Number(row.nb_interventions || 0),
+      heures: 0,
+      taux_moyen: null,
+      commentaire: '—',
+      nb_valides: Number(row.nb_valides || 0),
     }));
   }, [parMaint]);
 
   const evolution = Array.isArray(graphs?.evolution) ? graphs.evolution : [];
-  const hasEvolution = evolution.some(e => e.heures_correctives > 0 || e.nb_interventions > 0);
-  const dispoLignes = Array.isArray(graphs?.dispo_par_ligne) ? graphs.dispo_par_ligne : [];
-  const repartition = Array.isArray(graphs?.repartition) ? graphs.repartition : [];
+  const hasEvolution = evolution.some(e => e.nb_soumissions > 0 || e.nb_interventions > 0);
+  const dispoLignes  = Array.isArray(graphs?.dispo_par_ligne) ? graphs.dispo_par_ligne : [];
+  const repartition  = Array.isArray(graphs?.repartition)     ? graphs.repartition     : [];
   const hasRepartition = repartition.some(r => r.value > 0);
-  const parSemaine = Array.isArray(graphs?.par_semaine) ? graphs.par_semaine : [];
+  const parEquipement = Array.isArray(graphs?.par_equipement) ? graphs.par_equipement : [];
+  const parSemaine   = [];
 
   const saveAction = async () => {
     if (!actionEdit) return;
@@ -216,29 +196,29 @@ export default function DashboardMaintenancePage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <Kpi
           icon={Activity}
-          label="Disponibilité moyenne"
-          value={`${Number(kpis.disponibilite_moyenne || 0).toFixed(1)}%`}
-          sub="Cible 90 %"
-          accent={tauxSousCible ? 'amber' : 'emerald'}
+          label="Formulaires soumis"
+          value={kpis.nb_interventions || 0}
+          sub={`${kpis.nb_valides || 0} validés · ${kpis.nb_en_attente || 0} en attente`}
+          accent="primary"
         />
         <Kpi
           icon={Target}
-          label="Objectif atteint"
-          value={Number(kpis.disponibilite_moyenne || 0) >= 90 ? 'Oui' : 'Non'}
-          sub={tauxSousCible ? 'Sous la cible' : 'Dans la cible'}
+          label="Taux de validation"
+          value={`${Number(kpis.taux_validation || 0).toFixed(0)}%`}
+          sub={tauxSousCible ? 'Sous la cible 80%' : 'Dans la cible'}
           accent={tauxSousCible ? 'red' : 'emerald'}
         />
         <Kpi
           icon={Wrench}
-          label="Heures correctives"
-          value={`${Number(kpis.heures_correctives || 0).toFixed(1)}h`}
+          label="Formulaires rejetés"
+          value={kpis.nb_rejetes || 0}
           accent="red"
         />
         <Kpi
           icon={Clock}
-          label="Heures préventives"
-          value={`${Number(kpis.heures_preventives || 0).toFixed(1)}h`}
-          accent="primary"
+          label="En attente validation"
+          value={kpis.nb_en_attente || 0}
+          accent="amber"
         />
         <Kpi
           icon={Layers}
@@ -274,23 +254,23 @@ export default function DashboardMaintenancePage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={v => [`${Number(v).toFixed(1)} h`, 'Corrective']} />
+              <Tooltip formatter={(v, name) => [v, name === 'nb_soumissions' ? 'Soumissions' : name]} />
               <Legend />
               <Line
                 type="monotone"
-                dataKey="heures_correctives"
-                name="Heures correctives"
-                stroke="#dc2626"
+                dataKey="nb_soumissions"
+                name="Soumissions"
+                stroke="#4DB8A8"
                 strokeWidth={2}
                 dot={{ r: 3 }}
               />
               <Line
                 type="monotone"
-                dataKey="nb_interventions"
-                name="Nb interventions"
-                stroke="#4DB8A8"
+                dataKey="nb_valides"
+                name="Validées"
+                stroke="#22c55e"
                 strokeWidth={2}
-                yAxisId={0}
+                dot={{ r: 3 }}
               />
             </LineChart>
           </ResponsiveContainer>
