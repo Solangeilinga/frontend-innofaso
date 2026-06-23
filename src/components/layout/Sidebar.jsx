@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, FileCheck, Wrench, Bell, Calendar,
-  Users, LogOut, History, Layers, X, ChevronRight
+  Users, LogOut, History, Layers, X, ChevronRight, Package
 } from 'lucide-react';
 import { useAuth } from '../../store/auth';
 
@@ -13,7 +13,8 @@ const nav = [
   { to:'/alertes',      label:'Alertes',               icon:Bell,                      modules:['MAINTENANCE','PRODUCTION'] },
   { to:'/equipements',  label:'Équipements',           icon:Wrench,                    modules:['MAINTENANCE'] },
   { to:'/planning',     label:'Planning',              icon:Calendar,                  modules:['MAINTENANCE','PRODUCTION'] },
-  { to:'/lignes',       label:'Lignes de production',  icon:Layers,                    modules:['MAINTENANCE'] },
+  { to:'/lignes',       label:'Lignes de production',  icon:Layers,   modules:['MAINTENANCE'] },
+  { to:'/stock',        label:'Stock pièces',           icon:Package,  modules:['MAINTENANCE'] },
 ];
 
 const adminNav = [

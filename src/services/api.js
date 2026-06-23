@@ -98,13 +98,17 @@ export const alertesAPI = {
 
 // ── Stock ────────────────────────────────────────────────────────
 export const stockAPI = {
-    pieces:     p        => api.get('/stock/pieces', { params: p }),
-    creerPiece: d        => api.post('/stock/pieces', d),
-    modifier:   (id, d)  => api.put(`/stock/pieces/${id}`, d),
-    mouvement:  d        => api.post('/stock/pieces/mouvement', d),
-    historique: id       => api.get(`/stock/pieces/${id}/mouvements`),
-    alertes:    ()       => api.get('/stock/alertes-stock'),
-    exporter:   p        => api.get('/stock/export/excel', { params: p, responseType: 'blob' }),
+    lister:      p        => api.get('/stock', { params: p }),
+    getUne:      id       => api.get(`/stock/${id}`),
+    creer:       d        => api.post('/stock', d),
+    modifier:    (id, d)  => api.put(`/stock/${id}`, d),
+    supprimer:   id       => api.delete(`/stock/${id}`),
+    mouvements:  id       => api.get(`/stock/${id}/mouvements`),
+    entree:      (id, d)  => api.post(`/stock/${id}/entree`, d),
+    sortie:      (id, d)  => api.post(`/stock/${id}/sortie`, d),
+    // compat ancien code
+    pieces:      p        => api.get('/stock', { params: p }),
+    creerPiece:  d        => api.post('/stock', d),
 };
 
 // ── Matières premières ───────────────────────────────────────────

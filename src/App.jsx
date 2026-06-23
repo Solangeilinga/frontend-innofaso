@@ -10,6 +10,7 @@ import FormulaireRemplirPage from './pages/FormulaireRemplirPage';
 import SoumissionsPage from './pages/SoumissionsPage';
 import SoumissionDetailPage from './pages/SoumissionDetailPage';
 import EquipementsPage from './pages/EquipementsPage';
+import StockPage from './pages/StockPage';
 import AlertesPage from './pages/AlertesPage';
 import PlanningPage from './pages/PlanningPage';
 import PlannificationPage from './pages/PlannificationPage';
@@ -80,6 +81,7 @@ export default function App() {
         <Route path="plannification" element={<ModuleGuard allowed={['MAINTENANCE']}><PlannificationPage/></ModuleGuard>}/>
         <Route path="equipements" element={<ModuleGuard allowed={['MAINTENANCE']}><EquipementsPage/></ModuleGuard>}/>
         <Route path="lignes"      element={<ModuleGuard allowed={['MAINTENANCE']}><LignesPage/></ModuleGuard>}/>
+        <Route path="stock"       element={<ModuleGuard allowed={['MAINTENANCE']}><StockPage/></ModuleGuard>}/>
 
         {/* Admin */}
         <Route path="utilisateurs" element={<UtilisateursPage/>}/>

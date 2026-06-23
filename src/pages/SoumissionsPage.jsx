@@ -178,13 +178,6 @@ export default function SoumissionsPage() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      {modalValider && (
-        <ModalValider
-          soumission={modalValider}
-          onClose={() => setModalValider(null)}
-          onDone={() => { setModalValider(null); load(); }}
-        />
-      )}
 
       {/* Filtres */}
       <div className="card space-y-3">
@@ -350,12 +343,6 @@ export default function SoumissionsPage() {
                         <Link to={`/soumissions/${s.id}`} className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Voir détail">
                           <Eye size={15} className="text-gray-500"/>
                         </Link>
-                        {canValiderSoumission(s) && s.statut === 'SOUMIS' && (
-                          <button onClick={() => setModalValider(s)}
-                            className="flex items-center gap-1 text-xs px-2 py-1 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors">
-                            <CheckCircle size={13}/> Valider
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
