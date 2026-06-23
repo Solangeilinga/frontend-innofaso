@@ -94,7 +94,7 @@ export default function LoginPage() {
         >
           {/* Logo */}
           <div className="flex items-center gap-3 mb-8 justify-center">
-            <span className="font-display text-2xl font-bold text-primary">InnoFaso</span>
+            <img src="/images/logo.png" alt="InnoFaso" className="h-16 object-contain" />
           </div>
 
           {/* Login Card */}
@@ -144,26 +144,6 @@ export default function LoginPage() {
                   className="w-full px-3 py-2 text-sm border border-border rounded-md bg-white text-foreground focus:outline-none focus:border-primary transition-colors"
                   autoComplete="current-password"
                 />
-              </div>
-
-              {/* Remember Me & Forgot Password */}
-              <div className="flex items-center justify-between pt-1">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="rememberMe"
-                    className="w-3 h-3 border border-border rounded bg-white cursor-pointer focus:ring-0 focus:ring-offset-0"
-                  />
-                  <label
-                    htmlFor="rememberMe"
-                    className="text-xs text-muted-foreground cursor-pointer"
-                  >
-                    Se souvenir de moi
-                  </label>
-                </div>
-                <button type="button" className="text-xs text-primary hover:underline">
-                  Mot de passe oublié?
-                </button>
               </div>
 
               {/* Sign In Button */}
