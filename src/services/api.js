@@ -68,14 +68,13 @@ export const formulairesAPI = {
 
 // ── Soumissions ──────────────────────────────────────────────────
 export const soumissionsAPI = {
-    lister:       p        => api.get('/soumissions', { params: p }),
-    getUne:       id       => api.get(`/soumissions/${id}`),
-    creer:        d        => api.post('/soumissions', d),
-    valider:      (id, d)  => api.patch(`/soumissions/${id}/statut`, d),
-    updateEntete: (id, d)  => api.put(`/soumissions/${id}/entete`, d),
-    updateValeurs:(id, d)  => api.patch(`/soumissions/${id}/valeurs`, d),
-    sync:         d        => api.post('/soumissions/sync', d),
-    exporter:     p        => api.get('/soumissions/export/excel', { params: p, responseType: 'blob' }),
+    lister:   p        => api.get('/soumissions', { params: p }),
+    getUne:   id       => api.get(`/soumissions/${id}`),
+    creer:    d        => api.post('/soumissions', d),
+    valider:      (id, d) => api.patch(`/soumissions/${id}/statut`, d),
+    updateEntete: (id, d) => api.put(`/soumissions/${id}/entete`, d),
+    sync:     d        => api.post('/soumissions/sync', d),
+    exporter: p        => api.get('/soumissions/export/excel', { params: p, responseType: 'blob' }),
 };
 
 // ── Équipements ──────────────────────────────────────────────────

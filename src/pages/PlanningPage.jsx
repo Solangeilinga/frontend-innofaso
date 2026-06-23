@@ -331,29 +331,26 @@ export default function PlanningPage() {
 
 function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIcon, showComment, commentLabel }) {
   const [commentaire, setCommentaire] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [soumission, setSoumission] = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [soumission, setSoumission]   = useState(null);
   const [showSoumission, setShowSoumission] = useState(false);
   const [loadingSoum, setLoadingSoum] = useState(false);
   const [signataires, setSignataires] = useState([]);
-  // Valeurs éditables des champs signature {champ_def_id: valeur}
-  const [sigValues, setSigValues] = useState({});
-  const [savingSig, setSavingSig] = useState(false);
+  const [sigValues, setSigValues]     = useState({});
+  const [savingSig, setSavingSig]     = useState(false);
 
-  // Patterns pour détecter les champs signature
-  const SIG_PATTERNS = [/visa/i, /signat/i, /CQ\b/i, /chef.*quart/i, /responsable/i, /approbat/i, /vérificat/i];
-  const isSignature = (nomChamp) => SIG_PATTERNS.some(p => p.test(nomChamp || ''));
+  const SIG_PATTERNS = [/visa/i, /signat/i, /\bCQ\b/i, /chef.*quart/i, /responsable/i, /approbat/i, /vérificat/i];
+  const isSignature = (nom) => SIG_PATTERNS.some(p => p.test(nom || ''));
 
   const handleSubmit = async () => {
-    // Sauvegarder les signatures avant de confirmer
-    const sigEntries = Object.entries(sigValues).filter(([, v]) => v && v !== '__libre__');
-    if (sigEntries.length > 0) {
+    const sigEntries = Object.entries(sigValues).filter(([, v]) => v);
+    if (sigEntries.length > 0 && tache.soumission_id) {
       setSavingSig(true);
       try {
         await soumissionsAPI.updateValeurs(tache.soumission_id, {
           valeurs: sigEntries.map(([champ_def_id, valeur_texte]) => ({ champ_def_id, valeur_texte }))
         });
-      } catch { /* non bloquant */ }
+      } catch (_) { /* non bloquant */ }
       finally { setSavingSig(false); }
     }
     setLoading(true);
@@ -363,28 +360,24 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
 
   const toggleSoumission = async () => {
     if (showSoumission) { setShowSoumission(false); return; }
-    if (soumission) { setShowSoumission(true); return; }
-    if (!tache.soumission_id) { toast.error('Aucune soumission liée à cette tâche'); return; }
+    if (soumission)     { setShowSoumission(true);  return; }
+    if (!tache.soumission_id) { toast.error('Aucune soumission liée'); return; }
     setLoadingSoum(true);
     try {
-      const [{ data }, { data: sigs }] = await Promise.all([
+      // Charger soumission + signataires en parallèle
+      const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      const [{ data }, sigsResp] = await Promise.all([
         soumissionsAPI.getUne(tache.soumission_id),
-        soumissionsAPI.getUne(tache.soumission_id).then(() =>
-          // Charger les signataires
-          fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/v1/utilisateurs/liste-signataires`)
-            .then(r => r.json()).catch(() => [])
-        ),
+        fetch(`${apiBase}/api/v1/utilisateurs/liste-signataires`).then(r => r.json()).catch(() => []),
       ]);
       setSoumission(data);
-      setSignataires(Array.isArray(sigs) ? sigs : []);
-      // Pré-remplir les valeurs signature existantes
-      const existingSig = {};
+      setSignataires(Array.isArray(sigsResp) ? sigsResp : []);
+      // Pré-remplir les signatures déjà saisies
+      const init = {};
       for (const v of (data.valeurs || [])) {
-        if (isSignature(v.nom_champ) && v.valeur_texte) {
-          existingSig[v.champ_def_id] = v.valeur_texte;
-        }
+        if (isSignature(v.nom_champ) && v.valeur_texte) init[v.champ_def_id] = v.valeur_texte;
       }
-      setSigValues(existingSig);
+      setSigValues(init);
       setShowSoumission(true);
     } catch { toast.error('Impossible de charger le formulaire'); }
     finally { setLoadingSoum(false); }
@@ -398,30 +391,26 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
   }, {}) || {};
 
   const renderVal = (v) => {
-    if (v.valeur_booleen !== null && v.valeur_booleen !== undefined)
-      return v.valeur_booleen ? 'Oui ✓' : 'Non ✗';
-    if (v.valeur_nombre !== null && v.valeur_nombre !== undefined)
-      return `${v.valeur_nombre}${v.unite ? ' ' + v.unite : ''}`;
-    if (v.valeur_date) return new Date(v.valeur_date).toLocaleDateString('fr-FR');
+    if (v.valeur_booleen !== null && v.valeur_booleen !== undefined) return v.valeur_booleen ? 'Oui ✓' : 'Non ✗';
+    if (v.valeur_nombre !== null && v.valeur_nombre !== undefined) return `${v.valeur_nombre}${v.unite ? ' ' + v.unite : ''}`;
+    if (v.valeur_date)  return new Date(v.valeur_date).toLocaleDateString('fr-FR');
     if (v.valeur_texte) return v.valeur_texte;
     return '—';
   };
 
-  const ROLE_LABELS_SIG = {
-    ADMIN:'Administrateurs', RESP_MAINT:'Responsables Maintenance',
-    RESP_PROD:'Responsables Production', TECHNICIEN:'Techniciens',
-    OPERATEUR:'Opérateurs',
-  };
+  const RLABELS = { ADMIN:'Administrateurs', RESP_MAINT:'Resp. Maintenance',
+    RESP_PROD:'Resp. Production', TECHNICIEN:'Techniciens', OPERATEUR:'Opérateurs' };
 
   return (
     <div className="modal-overlay">
       <div className="modal p-6 space-y-4" style={{ maxWidth: showSoumission ? 720 : 480, width: '95vw' }}>
+        {/* Titre */}
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold">{title}</h3>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
 
-        {/* Infos formulaire */}
+        {/* Infos */}
         <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1">
           <p><span className="font-semibold">Formulaire :</span> {tache.formulaire_titre}</p>
           <p><span className="font-semibold">Code :</span> {tache.formulaire_code}</p>
@@ -430,33 +419,32 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
           )}
         </div>
 
-        {/* Formulaire soumis */}
+        {/* Voir formulaire */}
         {tache.soumission_id && (
           <div>
             <button type="button" onClick={toggleSoumission} disabled={loadingSoum}
               className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
-              {loadingSoum
-                ? <Loader2 size={14} className="animate-spin"/>
+              {loadingSoum ? <Loader2 size={14} className="animate-spin"/>
                 : showSoumission ? <ChevronUp size={14}/> : <Eye size={14}/>}
               {showSoumission ? 'Masquer le formulaire' : 'Voir le formulaire soumis'}
             </button>
 
             {showSoumission && soumission && (
-              <div className="mt-3 border border-border rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+              <div className="mt-3 border border-border rounded-xl overflow-hidden" style={{maxHeight:380,overflowY:'auto'}}>
                 {/* En-tête */}
                 <div className="bg-muted/40 px-4 py-2 border-b border-border flex items-center justify-between">
-                  <div className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground">
                     Soumis le {soumission.date_soumission
                       ? format(new Date(soumission.date_soumission), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'}
                     {' '}par <strong>{soumission.auteur_prenom} {soumission.auteur_nom}</strong>
-                  </div>
+                  </span>
                   <Link to={`/soumissions/${tache.soumission_id}`} target="_blank"
                     className="flex items-center gap-1 text-xs text-primary hover:underline">
                     <ExternalLink size={11}/> Ouvrir
                   </Link>
                 </div>
 
-                {/* Valeurs par section */}
+                {/* Sections + champs */}
                 {Object.entries(sections).map(([section, valeurs]) => (
                   <div key={section} className="border-b border-border last:border-0">
                     <div className="px-4 py-1.5 bg-muted/20 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -464,48 +452,41 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
                     </div>
                     <div className="divide-y divide-border">
                       {valeurs.map(v => (
-                        <div key={v.id} className={`px-4 py-2 text-xs gap-3 ${
-                          isSignature(v.nom_champ)
-                            ? 'flex flex-col'
-                            : 'flex items-start justify-between'
-                        }`}>
-                          <span className="text-muted-foreground font-medium">{v.nom_champ}</span>
-
-                          {isSignature(v.nom_champ) ? (
-                            /* Champ signature ÉDITABLE */
-                            <div className="relative">
+                        <div key={v.id} className="px-4 py-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">{v.nom_champ}</span>
+                            {!isSignature(v.nom_champ) && (
+                              <span className="font-medium text-right ml-2">{renderVal(v)}</span>
+                            )}
+                          </div>
+                          {/* Champ signature éditable */}
+                          {isSignature(v.nom_champ) && (
+                            <div className="mt-1.5">
                               <select
-                                value={sigValues[v.champ_def_id] || v.valeur_texte || ''}
+                                value={sigValues[v.champ_def_id] || ''}
                                 onChange={e => setSigValues(p => ({ ...p, [v.champ_def_id]: e.target.value }))}
-                                className="input text-xs appearance-none pr-8 cursor-pointer border-primary/50"
-                                style={{ fontSize: 12 }}
+                                className="input text-xs w-full cursor-pointer"
+                                style={{ borderColor: '#1d4ed8', fontSize: 12 }}
                               >
-                                <option value="">— Signer ici —</option>
+                                <option value="">✍️ — Signer ici —</option>
                                 {['ADMIN','RESP_MAINT','RESP_PROD','TECHNICIEN','OPERATEUR'].map(role => {
-                                  const groupe = signataires.filter(s => s.role === role);
-                                  if (!groupe.length) return null;
+                                  const g = signataires.filter(s => s.role === role);
+                                  if (!g.length) return null;
                                   return (
-                                    <optgroup key={role} label={ROLE_LABELS_SIG[role] || role}>
-                                      {groupe.map(s => (
-                                        <option key={s.id} value={s.value}>{s.label}</option>
-                                      ))}
+                                    <optgroup key={role} label={RLABELS[role] || role}>
+                                      {g.map(s => <option key={s.id} value={s.value}>{s.label}</option>)}
                                     </optgroup>
                                   );
                                 })}
                               </select>
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">✍️</span>
                             </div>
-                          ) : (
-                            /* Champ normal — lecture seule */
-                            <span className="font-medium text-right">{renderVal(v)}</span>
                           )}
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
-
-                {Object.keys(sections).length === 0 && (
+                {!Object.keys(sections).length && (
                   <p className="p-4 text-xs text-muted-foreground text-center italic">Aucune valeur saisie</p>
                 )}
               </div>
@@ -526,7 +507,7 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
           <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
           <button type="button" disabled={loading || savingSig} onClick={handleSubmit}
             className="btn-primary flex-1 inline-flex items-center justify-center gap-2">
-            {(loading || savingSig) ? <Loader2 size={16} className="animate-spin" /> : confirmIcon}
+            {(loading || savingSig) ? <Loader2 size={16} className="animate-spin"/> : confirmIcon}
             {loading ? 'Traitement…' : savingSig ? 'Signature…' : confirmLabel}
           </button>
         </div>
