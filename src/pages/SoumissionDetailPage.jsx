@@ -274,7 +274,7 @@ export default function SoumissionDetailPage() {
 
       {/* Entête */}
       {editEntete ? (
-        <EnteteEditor entete={s.entete} onSave={handleSaveEntete} onCancel={() => setEditEntete(false)}/>
+        <EnteteEditor entete={s.entete || s.formulaire_entete} onSave={handleSaveEntete} onCancel={() => setEditEntete(false)}/>
       ) : (
         <div className="card">
           <div className="flex items-center justify-between mb-3">
@@ -286,22 +286,33 @@ export default function SoumissionDetailPage() {
               <Pencil size={13}/> Modifier
             </button>
           </div>
-          {s.entete ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-              {[
-                ['Émetteur',     s.entete.emetteur_nom,     s.entete.emetteur_fonction,     s.entete.emetteur_date],
-                ['Vérificateur', s.entete.verificateur_nom, s.entete.verificateur_fonction, s.entete.verificateur_date],
-                ['Approbateur',  s.entete.approbateur_nom,  s.entete.approbateur_fonction,  s.entete.approbateur_date],
-              ].map(([role, nom, fn, date]) => (
-                <div key={role} className="bg-muted/40 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{role}</p>
-                  <p className="font-medium">{nom || '—'}</p>
-                  {fn   && <p className="text-xs text-muted-foreground">{fn}</p>}
-                  {date && <p className="text-xs text-muted-foreground">{format(new Date(date),'dd/MM/yyyy',{locale:fr})}</p>}
+          {(s.entete || s.formulaire_entete) ? (() => {
+            const e = s.entete || s.formulaire_entete;
+            return (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                  {[
+                    ['Émetteur',     e.emetteur_nom,     e.emetteur_fonction,     e.emetteur_date],
+                    ['Vérificateur', e.verificateur_nom, e.verificateur_fonction, e.verificateur_date],
+                    ['Approbateur',  e.approbateur_nom,  e.approbateur_fonction,  e.approbateur_date],
+                  ].map(([role, nom, fn, date]) => (
+                    <div key={role} className="bg-muted/40 rounded-xl p-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">{role}</p>
+                      <p className="font-medium">{nom || '—'}</p>
+                      {fn   && <p className="text-xs text-muted-foreground">{fn}</p>}
+                      {date && <p className="text-xs text-muted-foreground">{format(new Date(date),'dd/MM/yyyy',{locale:fr})}</p>}
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
+                {e.destinataires && (
+                  <div className="bg-muted/40 rounded-xl p-3 text-sm">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Destinataires</p>
+                    <p>{e.destinataires}</p>
+                  </div>
+                )}
+              </div>
+            );
+          })() : (
             <p className="text-sm text-muted-foreground italic">
               Aucune entête renseignée.{' '}
               <button onClick={() => setEditEntete(true)} className="text-primary underline">Ajouter</button>
