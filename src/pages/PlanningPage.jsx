@@ -335,14 +335,30 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
   const [soumission, setSoumission] = useState(null);
   const [showSoumission, setShowSoumission] = useState(false);
   const [loadingSoum, setLoadingSoum] = useState(false);
+  const [signataires, setSignataires] = useState([]);
+  // Valeurs éditables des champs signature {champ_def_id: valeur}
+  const [sigValues, setSigValues] = useState({});
+  const [savingSig, setSavingSig] = useState(false);
+
+  // Patterns pour détecter les champs signature
+  const SIG_PATTERNS = [/visa/i, /signat/i, /CQ\b/i, /chef.*quart/i, /responsable/i, /approbat/i, /vérificat/i];
+  const isSignature = (nomChamp) => SIG_PATTERNS.some(p => p.test(nomChamp || ''));
 
   const handleSubmit = async () => {
-    setLoading(true);
-    try {
-      await onConfirm(commentaire);
-    } catch {
-      setLoading(false);
+    // Sauvegarder les signatures avant de confirmer
+    const sigEntries = Object.entries(sigValues).filter(([, v]) => v && v !== '__libre__');
+    if (sigEntries.length > 0) {
+      setSavingSig(true);
+      try {
+        await soumissionsAPI.updateValeurs(tache.soumission_id, {
+          valeurs: sigEntries.map(([champ_def_id, valeur_texte]) => ({ champ_def_id, valeur_texte }))
+        });
+      } catch { /* non bloquant */ }
+      finally { setSavingSig(false); }
     }
+    setLoading(true);
+    try { await onConfirm(commentaire); }
+    catch { setLoading(false); }
   };
 
   const toggleSoumission = async () => {
@@ -351,14 +367,29 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
     if (!tache.soumission_id) { toast.error('Aucune soumission liée à cette tâche'); return; }
     setLoadingSoum(true);
     try {
-      const { data } = await soumissionsAPI.getUne(tache.soumission_id);
+      const [{ data }, { data: sigs }] = await Promise.all([
+        soumissionsAPI.getUne(tache.soumission_id),
+        soumissionsAPI.getUne(tache.soumission_id).then(() =>
+          // Charger les signataires
+          fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/v1/utilisateurs/liste-signataires`)
+            .then(r => r.json()).catch(() => [])
+        ),
+      ]);
       setSoumission(data);
+      setSignataires(Array.isArray(sigs) ? sigs : []);
+      // Pré-remplir les valeurs signature existantes
+      const existingSig = {};
+      for (const v of (data.valeurs || [])) {
+        if (isSignature(v.nom_champ) && v.valeur_texte) {
+          existingSig[v.champ_def_id] = v.valeur_texte;
+        }
+      }
+      setSigValues(existingSig);
       setShowSoumission(true);
     } catch { toast.error('Impossible de charger le formulaire'); }
     finally { setLoadingSoum(false); }
   };
 
-  // Grouper les valeurs par section
   const sections = soumission?.valeurs?.reduce((acc, v) => {
     const sec = v.section || 'Général';
     if (!acc[sec]) acc[sec] = [];
@@ -374,6 +405,12 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
     if (v.valeur_date) return new Date(v.valeur_date).toLocaleDateString('fr-FR');
     if (v.valeur_texte) return v.valeur_texte;
     return '—';
+  };
+
+  const ROLE_LABELS_SIG = {
+    ADMIN:'Administrateurs', RESP_MAINT:'Responsables Maintenance',
+    RESP_PROD:'Responsables Production', TECHNICIEN:'Techniciens',
+    OPERATEUR:'Opérateurs',
   };
 
   return (
@@ -393,38 +430,28 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
           )}
         </div>
 
-        {/* Bouton voir le formulaire soumis */}
+        {/* Formulaire soumis */}
         {tache.soumission_id && (
           <div>
-            <button
-              type="button"
-              onClick={toggleSoumission}
-              disabled={loadingSoum}
-              className="flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-            >
+            <button type="button" onClick={toggleSoumission} disabled={loadingSoum}
+              className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
               {loadingSoum
                 ? <Loader2 size={14} className="animate-spin"/>
-                : showSoumission ? <ChevronUp size={14}/> : <Eye size={14}/>
-              }
+                : showSoumission ? <ChevronUp size={14}/> : <Eye size={14}/>}
               {showSoumission ? 'Masquer le formulaire' : 'Voir le formulaire soumis'}
             </button>
 
             {showSoumission && soumission && (
-              <div className="mt-3 border border-border rounded-xl overflow-hidden max-h-80 overflow-y-auto">
-                {/* En-tête soumission */}
+              <div className="mt-3 border border-border rounded-xl overflow-hidden max-h-96 overflow-y-auto">
+                {/* En-tête */}
                 <div className="bg-muted/40 px-4 py-2 border-b border-border flex items-center justify-between">
                   <div className="text-xs text-muted-foreground">
                     Soumis le {soumission.date_soumission
-                      ? format(new Date(soumission.date_soumission), 'dd/MM/yyyy HH:mm', { locale: fr })
-                      : '—'
-                    }
+                      ? format(new Date(soumission.date_soumission), 'dd/MM/yyyy HH:mm', { locale: fr }) : '—'}
                     {' '}par <strong>{soumission.auteur_prenom} {soumission.auteur_nom}</strong>
                   </div>
-                  <Link
-                    to={`/soumissions/${tache.soumission_id}`}
-                    target="_blank"
-                    className="flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
+                  <Link to={`/soumissions/${tache.soumission_id}`} target="_blank"
+                    className="flex items-center gap-1 text-xs text-primary hover:underline">
                     <ExternalLink size={11}/> Ouvrir
                   </Link>
                 </div>
@@ -437,9 +464,41 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
                     </div>
                     <div className="divide-y divide-border">
                       {valeurs.map(v => (
-                        <div key={v.id} className="flex items-start justify-between px-4 py-2 text-xs gap-4">
-                          <span className="text-muted-foreground flex-shrink-0 max-w-[55%]">{v.nom_champ}</span>
-                          <span className="font-medium text-right">{renderVal(v)}</span>
+                        <div key={v.id} className={`px-4 py-2 text-xs gap-3 ${
+                          isSignature(v.nom_champ)
+                            ? 'flex flex-col'
+                            : 'flex items-start justify-between'
+                        }`}>
+                          <span className="text-muted-foreground font-medium">{v.nom_champ}</span>
+
+                          {isSignature(v.nom_champ) ? (
+                            /* Champ signature ÉDITABLE */
+                            <div className="relative">
+                              <select
+                                value={sigValues[v.champ_def_id] || v.valeur_texte || ''}
+                                onChange={e => setSigValues(p => ({ ...p, [v.champ_def_id]: e.target.value }))}
+                                className="input text-xs appearance-none pr-8 cursor-pointer border-primary/50"
+                                style={{ fontSize: 12 }}
+                              >
+                                <option value="">— Signer ici —</option>
+                                {['ADMIN','RESP_MAINT','RESP_PROD','TECHNICIEN','OPERATEUR'].map(role => {
+                                  const groupe = signataires.filter(s => s.role === role);
+                                  if (!groupe.length) return null;
+                                  return (
+                                    <optgroup key={role} label={ROLE_LABELS_SIG[role] || role}>
+                                      {groupe.map(s => (
+                                        <option key={s.id} value={s.value}>{s.label}</option>
+                                      ))}
+                                    </optgroup>
+                                  );
+                                })}
+                              </select>
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">✍️</span>
+                            </div>
+                          ) : (
+                            /* Champ normal — lecture seule */
+                            <span className="font-medium text-right">{renderVal(v)}</span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -458,26 +517,17 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
         {showComment && (
           <div>
             <label className="label">{commentLabel || 'Commentaire'}</label>
-            <textarea
-              value={commentaire}
-              onChange={e => setCommentaire(e.target.value)}
-              rows={3}
-              className="input resize-none"
-              placeholder="Saisissez un commentaire…"
-            />
+            <textarea value={commentaire} onChange={e => setCommentaire(e.target.value)}
+              rows={3} className="input resize-none" placeholder="Saisissez un commentaire…"/>
           </div>
         )}
 
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={handleSubmit}
-            className="btn-primary flex-1 inline-flex items-center justify-center gap-2"
-          >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : confirmIcon}
-            {loading ? 'Traitement…' : confirmLabel}
+          <button type="button" disabled={loading || savingSig} onClick={handleSubmit}
+            className="btn-primary flex-1 inline-flex items-center justify-center gap-2">
+            {(loading || savingSig) ? <Loader2 size={16} className="animate-spin" /> : confirmIcon}
+            {loading ? 'Traitement…' : savingSig ? 'Signature…' : confirmLabel}
           </button>
         </div>
       </div>
