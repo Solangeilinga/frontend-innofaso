@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { planningAPI, signatairesAPI } from '../services/api';
+import { planningAPI, signatairesAPI, planningAutreAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
@@ -10,6 +10,7 @@ import { format, parseISO, isPast } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import PlannificationCorrective from './PlannificationCorrective';
+import PlannificationAutre from './PlannificationAutre';
 
 const SEMAINES = [1, 2, 3, 4];
 const COUVERTURE_DEF = 8;
@@ -53,6 +54,8 @@ function PlanningAdmin({ onBack }) {
   );
   const [data, setData] = useState(null);
   const [historique, setHistorique] = useState([]);
+  const [historiqueCorrectif, setHistoriqueCorrectif] = useState([]);
+  const [historiqueAutre, setHistoriqueAutre] = useState([]);
   const [loading, setLoading] = useState(false);
   const [editRow, setEditRow] = useState(null);
   const [assignRow, setAssignRow] = useState(null);
@@ -96,10 +99,16 @@ function PlanningAdmin({ onBack }) {
   }, [selectedLigne, mois, annee, semaineIndex]);
 
   const loadHistorique = useCallback(() => {
-    if (!selectedLigne) return;
-    planningAPI
-      .listerHistorique({ ligne_id: selectedLigne, mois, annee })
-      .then(r => setHistorique(r.data))
+    Promise.all([
+      planningAPI.listerHistorique({ ligne_id: selectedLigne || undefined, mois, annee }),
+      planningAPI.listerHistoriqueCorrectif({ ligne_id: selectedLigne || undefined, mois, annee }),
+      planningAutreAPI.historique({ mois, annee }),
+    ])
+      .then(([prev, corr, autre]) => {
+        setHistorique(prev.data);
+        setHistoriqueCorrectif(corr.data);
+        setHistoriqueAutre(autre.data);
+      })
       .catch(() => toast.error('Erreur historique'));
   }, [selectedLigne, mois, annee]);
 
@@ -108,7 +117,7 @@ function PlanningAdmin({ onBack }) {
     else if (tab === 'historique') loadHistorique();
   }, [tab, loadPlanning, loadHistorique]);
 
-  const weekLocked = data?.date_fin ? isPast(parseISO(data.date_fin)) : false;
+  const isPastDate = (dateStr) => isPast(parseISO(dateStr));
 
   const rows = useMemo(() => {
     if (!data?.jours || !data?.quarts_ref) return [];
@@ -128,7 +137,7 @@ function PlanningAdmin({ onBack }) {
           planning_quart_id: assigned?.id || null,
           planning_jour_id: jour.id,
           date_jour: jour.date_jour,
-          locked: weekLocked,
+          locked: isPastDate(jour.date_jour),
           jour_semaine: jour.jour_semaine,
           maintenancier_nom: assigned?.maintenancier_nom,
           maintenancier_id: assigned?.maintenancier_id,
@@ -143,6 +152,7 @@ function PlanningAdmin({ onBack }) {
           taux_disponibilite: taux,
           taux_cible: li?.taux_cible ?? 90,
           cause: li?.cause_indisponibilite || '',
+          commentaire: li?.commentaire || '',
           interventions: assigned?.interventions || [],
           formulaires: assigned?.formulaires || [],
           ligne_code: data.ligne?.code,
@@ -150,7 +160,7 @@ function PlanningAdmin({ onBack }) {
       }
     }
     return out;
-  }, [data, currentUser, weekLocked]);
+  }, [data, currentUser]);
 
   const shiftMonth = dir => {
     let m = mois + dir;
@@ -203,6 +213,7 @@ function PlanningAdmin({ onBack }) {
         planning_quart_id: row.planning_quart_id,
         duree_arret_agregee: Number(row.duree_arret) || 0,
         cause_indisponibilite: row.cause,
+        commentaire: row.commentaire || '',
         temps_couverture: Number(row.temps_couverture) || COUVERTURE_DEF,
         taux_cible: row.taux_cible ? Number(row.taux_cible) : undefined,
       });
@@ -233,6 +244,7 @@ function PlanningAdmin({ onBack }) {
         planning_quart_id: editRow.planning_quart_id,
         duree_arret_agregee: Number(editRow.duree_arret) || 0,
         cause_indisponibilite: editRow.cause,
+        commentaire: editRow.commentaire || '',
         temps_couverture: Number(editRow.temps_couverture) || COUVERTURE_DEF,
         taux_cible: editRow.taux_cible ? Number(editRow.taux_cible) : undefined,
       });
@@ -283,6 +295,7 @@ function PlanningAdmin({ onBack }) {
         {[
           { id: 'planning', label: 'Préventif', icon: LayoutGrid },
           { id: 'correctif', label: 'Correctif', icon: Wrench },
+          { id: 'autre', label: 'Autre', icon: FileText },
           { id: 'historique', label: 'Historique', icon: History },
         ].map(({ id, label, icon: Icon }) => (
           <button
@@ -302,6 +315,7 @@ function PlanningAdmin({ onBack }) {
         <div className="min-w-[140px] flex-1">
           <label className="label">Ligne</label>
           <select value={selectedLigne} onChange={e => setSelectedLigne(e.target.value)} className="select input">
+            <option value="">Toutes les lignes</option>
             {lignes.map(l => (
               <option key={l.id} value={l.id}>{l.code} — {l.nom}</option>
             ))}
@@ -617,12 +631,18 @@ function PlanningAdmin({ onBack }) {
         </div>
       )}
 
+      {tab === 'autre' && (
+        <PlannificationAutre />
+      )}
+
       {tab === 'historique' && (
         <div className="space-y-4">
           <div className="flex gap-2 rounded-lg border border-border bg-card p-1 shadow-sm w-fit">
-            {[
-              { id: 'preventif', label: 'Préventif', icon: LayoutGrid },
-            ].map(({ id, label, icon: Icon }) => (
+              {[
+                { id: 'preventif', label: 'Préventif', icon: LayoutGrid },
+                { id: 'correctif', label: 'Correctif', icon: Wrench },
+                { id: 'autre', label: 'Autre', icon: FileText },
+              ].map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
                 type="button"
@@ -670,6 +690,80 @@ function PlanningAdmin({ onBack }) {
                     >
                       Ouvrir dans le planning
                     </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {histoTab === 'correctif' && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {historiqueCorrectif.length === 0 ? (
+                <p className="col-span-full py-12 text-center text-muted-foreground">Aucun historique correctif.</p>
+              ) : (
+                historiqueCorrectif.map(h => (
+                  <div key={h.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-primary">
+                      S{String(h.semaine_index).padStart(2, '0')}
+                    </div>
+                    <div className="mt-1 font-bold">{h.equipement_nom || h.equipement_libre || 'Équipement'}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {h.date_intervention || '—'}
+                    </div>
+                    <div className="mt-3 flex justify-between text-sm">
+                      <span>Arrêt</span>
+                      <span className="font-semibold text-red-600">{Number(h.duree_arret).toFixed(1)}h</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Maintenance</span>
+                      <span className="font-semibold">{Number(h.duree_maintenance).toFixed(1)}h</span>
+                    </div>
+                    <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+                      <span>Exécuteur</span>
+                      <span>{h.executeur?.prenom} {h.executeur?.nom || '—'}</span>
+                    </div>
+                    {h.cause && <p className="mt-2 text-xs text-muted-foreground truncate">{h.cause}</p>}
+                    <button
+                      type="button"
+                      className="mt-3 w-full rounded-lg bg-muted py-1.5 text-xs font-medium hover:bg-primary/10 hover:text-primary"
+                      onClick={() => {
+                        setTab('correctif');
+                      }}
+                    >
+                      Ouvrir dans le planning
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {histoTab === 'autre' && (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {historiqueAutre.length === 0 ? (
+                <p className="col-span-full py-12 text-center text-muted-foreground">Aucun historique autre.</p>
+              ) : (
+                historiqueAutre.map(h => (
+                  <div key={h.id} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                    <div className="text-xs font-semibold uppercase text-primary">
+                      {h.date_planif}
+                    </div>
+                    <div className="mt-1 font-bold">{h.formulaire?.titre || 'Planification'}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {h.heure_planif ? h.heure_planif.slice(0, 5) : ''}
+                    </div>
+                    <div className="mt-3 flex justify-between text-sm">
+                      <span>Exécuteur</span>
+                      <span className="font-semibold">{h.executeur?.prenom} {h.executeur?.nom || '—'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Vérificateur</span>
+                      <span>{h.verificateur?.prenom} {h.verificateur?.nom || '—'}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Validateur</span>
+                      <span>{h.validateur?.prenom} {h.validateur?.nom || '—'}</span>
+                    </div>
                   </div>
                 ))
               )}
@@ -856,6 +950,20 @@ function PlanningAdmin({ onBack }) {
                 onChange={e => setEditRow(p => ({ ...p, cause: e.target.value }))}
               />
             </div>
+            {calcTaux(editRow.temps_couverture, editRow.duree_arret) < (editRow.taux_cible || 90) && (
+              <div>
+                <label className="label font-semibold text-amber-700">
+                  Commentaire (taux {calcTaux(editRow.temps_couverture, editRow.duree_arret)}% inférieur à la cible)
+                </label>
+                <textarea
+                  className="input resize-none border-amber-300 focus:border-amber-500"
+                  rows={2}
+                  value={editRow.commentaire || ''}
+                  onChange={e => setEditRow(p => ({ ...p, commentaire: e.target.value }))}
+                  placeholder="Veuillez justifier / commenter…"
+                />
+              </div>
+            )}
             <div className="flex gap-2">
               <button type="button" className="btn-secondary flex-1" onClick={() => setEditRow(null)}>Annuler</button>
               <button type="button" className="btn-primary flex-1" onClick={saveLigneEdit}>Sauvegarder</button>
@@ -867,6 +975,7 @@ function PlanningAdmin({ onBack }) {
         <FormulairesModal
           row={formulairesModal}
           allFormulaires={allFormulaires}
+          readOnly={formulairesModal.locked}
           onClose={() => setFormulairesModal(null)}
           onToggle={async (formulaireId) => {
             try {
@@ -885,7 +994,7 @@ function PlanningAdmin({ onBack }) {
   );
 }
 
-function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
+function FormulairesModal({ row, allFormulaires, readOnly = false, onClose, onToggle }) {
   const [pendingToggle, setPendingToggle] = useState(null);
   const [filter, setFilter] = useState('');
 
@@ -913,7 +1022,7 @@ function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
       <div className="modal max-w-xl p-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold">Taguer des formulaires</h3>
+            <h3 className="text-lg font-bold">{readOnly ? 'Formulaires planifiés' : 'Taguer des formulaires'}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               {row.jour_semaine} — {row.quart?.nom || row.quart?.nom || ''}
             </p>
@@ -923,54 +1032,72 @@ function FormulairesModal({ row, allFormulaires, onClose, onToggle }) {
           </button>
         </div>
 
-        <div className="relative mb-3">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            className="input w-full pl-8 py-2 text-sm"
-            placeholder="Rechercher un formulaire…"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-          />
-        </div>
-
-        {filtered.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Aucun résultat.</p>
-        ) : (
-          <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
-            {Object.entries(byModule).map(([module, forms]) => (
-              <div key={module}>
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {module}
-                </p>
-                <ul className="space-y-1">
-                  {forms.map(f => {
-                    const tagged = taggedIds.has(f.id);
-                    return (
-                      <li key={f.id}>
-                        <label
-                          className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
-                            tagged
-                              ? 'border-primary/30 bg-primary/8 text-primary'
-                              : 'border-border bg-card hover:bg-muted'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 accent-primary"
-                            checked={tagged}
-                            disabled={pendingToggle === f.id}
-                            onChange={() => handleToggle(f.id)}
-                          />
-                          <span className="flex-1 font-medium">{f.titre}</span>
-                          <span className="text-[10px] text-muted-foreground">{f.code}</span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            ))}
+        {readOnly ? (
+          <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+            {row.formulaires?.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Aucun formulaire planifié pour cette journée.</p>
+            ) : (
+              row.formulaires.map(f => (
+                <div key={f.id} className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm">
+                  <FileText size={16} className="text-primary flex-shrink-0" />
+                  <span className="flex-1 font-medium">{f.titre}</span>
+                  <span className="text-[10px] text-muted-foreground">{f.code}</span>
+                </div>
+              ))
+            )}
           </div>
+        ) : (
+          <>
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                className="input w-full pl-8 py-2 text-sm"
+                placeholder="Rechercher un formulaire…"
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+              />
+            </div>
+
+            {filtered.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">Aucun résultat.</p>
+            ) : (
+              <div className="space-y-4 max-h-[55vh] overflow-y-auto pr-1">
+                {Object.entries(byModule).map(([module, forms]) => (
+                  <div key={module}>
+                    <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      {module}
+                    </p>
+                    <ul className="space-y-1">
+                      {forms.map(f => {
+                        const tagged = taggedIds.has(f.id);
+                        return (
+                          <li key={f.id}>
+                            <label
+                              className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition ${
+                                tagged
+                                  ? 'border-primary/30 bg-primary/8 text-primary'
+                                  : 'border-border bg-card hover:bg-muted'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 accent-primary"
+                                checked={tagged}
+                                disabled={pendingToggle === f.id}
+                                onChange={() => handleToggle(f.id)}
+                              />
+                              <span className="flex-1 font-medium">{f.titre}</span>
+                              <span className="text-[10px] text-muted-foreground">{f.code}</span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
 
         <div className="mt-4 flex justify-end">

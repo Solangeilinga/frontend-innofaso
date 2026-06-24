@@ -159,9 +159,20 @@ export const planningAPI = {
     creerSignalementPanne:    d  => api.post('/planning/signalement/creer', d),
     listerSignalements:       () => api.get('/planning/signalements/lister').catch(() => ({ data: [] })),
     obtenirCorrectifSemaine:  id => api.get(`/planning/correctif/semaine/${id}`).catch(() => ({ data: [] })),
+    obtenirSemaineParDate:   p  => api.get('/planning/correctif/semaine-par-date', { params: p }),
     sauvegarderCorrectif:     d  => api.post('/planning/correctif/sauvegarder', d),
     toggleFormulaireCorrectif:d  => api.post('/planning/correctif/toggle-formulaire', d),
+    listerHistoriqueCorrectif:p  => api.get('/planning/correctif/historique', { params: p }).catch(() => ({ data: [] })),
     listerEquipementsEtLignes:() => api.get('/planning/equipements-et-lignes').catch(() => ({ data: [] })),
+};
+
+// ── Planning Autre ──────────────────────────────────────────────
+export const planningAutreAPI = {
+    creer:     d  => api.post('/planning/autre/creer', d),
+    modifier:  (id, d) => api.put(`/planning/autre/${id}`, d),
+    lister:    p  => api.get('/planning/autre/lister', { params: p }).catch(() => ({ data: [] })),
+    historique:p  => api.get('/planning/autre/historique', { params: p }).catch(() => ({ data: [] })),
+    supprimer: id => api.delete(`/planning/autre/${id}`),
 };
 
 // ── Lignes ───────────────────────────────────────────────────────
