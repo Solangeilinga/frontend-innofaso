@@ -64,7 +64,7 @@ export default function LoginPage() {
     try {
       const utilisateur = await login(form.email, form.mot_de_passe);
       toast.success('Connexion réussie !');
-      if (utilisateur?.role === 'Admin') {
+      if (utilisateur?.role === 'ADMIN') {
         navigate(moduleScope ? '/' : '/modules');
       } else {
         navigate('/');

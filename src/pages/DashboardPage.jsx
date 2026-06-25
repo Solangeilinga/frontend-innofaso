@@ -67,7 +67,7 @@ function DashboardProduction({ user }) {
   const [prod,      setProd]      = useState(null);
   const [adoption,  setAdoption]  = useState(null);
   const [activite,  setActivite]  = useState([]);
-
+  const [matieres,  setMatieres]  = useState({ total: 0, en_alerte: 0, en_rupture: 0 });
   const [recentes,  setRecentes]  = useState([]);
   const [loading,   setLoading]   = useState(true);
 
@@ -79,12 +79,11 @@ function DashboardProduction({ user }) {
       dashboardAPI.activite(),
       soumissionsAPI.lister({ module: 'PRODUCTION', limit: 8, page: 1 }),
     ])
-      .then(([s, p, ad, ac, mp, rec]) => {
+      .then(([s, p, ad, ac, rec]) => {
         setStats(s.data || {});
         setProd(p.data || {});
         setAdoption(ad.data || {});
         setActivite(Array.isArray(ac.data) ? ac.data : []);
-        setMatieres(mp.data || { total: 0, en_alerte: 0, en_rupture: 0 });
         setRecentes(rec.data?.data || []);
       })
       .catch(() => {})
