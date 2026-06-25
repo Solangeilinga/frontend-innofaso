@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { planningAPI } from '../services/api';
+import { planningAPI, rapportsAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
@@ -11,7 +11,7 @@ import { fr } from 'date-fns/locale';
 import {
   Activity, Wrench, TrendingUp, ChevronLeft, ChevronRight, Save,
   Target, AlertTriangle, Clock, Gauge, ArrowUpRight, ArrowDownRight,
-  CheckCircle2,
+  CheckCircle2, BarChart2, Loader2,
 } from 'lucide-react';
 
 const PIE_COLORS = ['#10b981', '#ef4444'];
@@ -238,6 +238,24 @@ export default function DashboardMaintenancePage() {
   const [parLigne, setParLigne] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionEdit, setActionEdit] = useState(null);
+
+  // ── Rapport mensuel OEE / MTBF / MTTR ───────────────────────────
+  const [mensuelData, setMensuelData] = useState(null);
+  const [mensuelLoading, setMensuelLoading] = useState(false);
+  const [mensuelAnnee, setMensuelAnnee] = useState(now.getFullYear());
+  const [mensuelMois, setMensuelMois] = useState(now.getMonth() + 1);
+
+  const chargerMensuel = async () => {
+    setMensuelLoading(true);
+    try {
+      const { data } = await rapportsAPI.mensuelIndicateurs({ annee: mensuelAnnee, mois: mensuelMois });
+      setMensuelData(data);
+    } catch {
+      toast.error('Impossible de charger le rapport mensuel.');
+    } finally {
+      setMensuelLoading(false);
+    }
+  };
 
   useEffect(() => {
     planningAPI.listerLignes()
@@ -660,6 +678,129 @@ export default function DashboardMaintenancePage() {
           </div>
         </section>
       ))}
+
+      {/* ── Rapport mensuel OEE / MTBF / MTTR ───────────────────── */}
+      <section className="card p-5">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <BarChart2 size={18} className="text-primary shrink-0" />
+          <h2 className="font-semibold text-base">Rapport mensuel — OEE / MTBF / MTTR</h2>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <input
+              type="number" min="2024" max="2099"
+              className="input w-24 text-sm"
+              value={mensuelAnnee}
+              onChange={e => setMensuelAnnee(parseInt(e.target.value))}
+            />
+            <select
+              className="input w-32 text-sm"
+              value={mensuelMois}
+              onChange={e => setMensuelMois(parseInt(e.target.value))}
+            >
+              {['Janvier','Février','Mars','Avril','Mai','Juin',
+                'Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+                .map((n, i) => <option key={i+1} value={i+1}>{n}</option>)}
+            </select>
+            <button
+              type="button"
+              className="btn-primary text-sm flex items-center gap-1.5"
+              onClick={chargerMensuel}
+              disabled={mensuelLoading}
+            >
+              {mensuelLoading ? <Loader2 size={14} className="animate-spin" /> : <BarChart2 size={14} />}
+              Générer
+            </button>
+          </div>
+        </div>
+
+        {mensuelData ? (() => {
+          const g = mensuelData.globaux;
+          const kpis = [
+            { label: 'OEE',          value: g.oee_pct != null          ? `${g.oee_pct} %`   : '—', color: 'text-emerald-600' },
+            { label: 'Disponibilité',value: g.disponibilite_pct != null ? `${g.disponibilite_pct} %` : '—', color: 'text-blue-600' },
+            { label: 'MTBF',         value: g.mtbf_h != null           ? `${g.mtbf_h} h`    : '—', color: 'text-violet-600' },
+            { label: 'MTTR',         value: g.mttr_h != null           ? `${g.mttr_h} h`    : '—', color: 'text-orange-500' },
+            { label: 'Nb pannes',    value: g.nb_pannes_total,                                       color: 'text-red-500' },
+            { label: 'Arrêt total',  value: `${g.total_arret_h} h`,                                  color: 'text-gray-600' },
+          ];
+          return (
+            <div className="space-y-5">
+              {/* KPIs globaux */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {kpis.map(k => (
+                  <div key={k.label} className="rounded-xl border bg-surface p-3 text-center">
+                    <p className="text-xs text-muted-foreground mb-1">{k.label}</p>
+                    <p className={`text-xl font-bold ${k.color}`}>{k.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Préventives */}
+              <div className="rounded-xl border p-4 bg-surface">
+                <p className="text-sm font-semibold mb-2">Maintenances préventives</p>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <span>Planifiées : <strong>{g.preventives_planifiees}</strong></span>
+                  <span className="text-emerald-600">Réalisées : <strong>{g.preventives_realisees}</strong></span>
+                  <span className="text-red-500">En retard : <strong>{g.preventives_en_retard}</strong></span>
+                  <span className="text-violet-600">Taux : <strong>{g.taux_realisation_pct} %</strong></span>
+                </div>
+              </div>
+
+              {/* Tableau par équipement */}
+              {mensuelData.par_equipement.length > 0 && (
+                <div className="overflow-x-auto">
+                  <p className="text-sm font-semibold mb-2">Indicateurs par équipement</p>
+                  <table className="table w-full text-sm">
+                    <thead>
+                      <tr>
+                        {['Équipement','Pannes','Arrêt (h)','Maint. (h)','MTBF (h)','MTTR (h)','Dispo (%)','OEE (%)']
+                          .map(h => <th key={h} className="th text-left">{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mensuelData.par_equipement.map((r, i) => (
+                        <tr key={i} className="tr">
+                          <td className="td font-medium">{r.equipement || '—'}</td>
+                          <td className="td text-center text-red-600 font-semibold">{r.nb_correctifs}</td>
+                          <td className="td text-center">{r.total_arret_h}</td>
+                          <td className="td text-center">{r.total_maint_h}</td>
+                          <td className="td text-center text-violet-600">{r.mtbf_h ?? '—'}</td>
+                          <td className="td text-center text-orange-500">{r.mttr_h ?? '—'}</td>
+                          <td className="td text-center text-blue-600">{r.disponibilite_pct} %</td>
+                          <td className="td text-center text-emerald-600">{r.oee_pct} %</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Encres & solvants */}
+              {mensuelData.encres_solvants.length > 0 && (
+                <div className="rounded-xl border p-4 bg-surface">
+                  <p className="text-sm font-semibold mb-2">Suivi encres & solvants</p>
+                  <div className="flex flex-wrap gap-4">
+                    {mensuelData.encres_solvants.map(r => (
+                      <div key={r.code} className="text-sm">
+                        <span className="text-muted-foreground">{r.titre} :</span>{' '}
+                        <strong>{r.nb_saisies} saisie{r.nb_saisies > 1 ? 's' : ''}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground italic">
+                * OEE calculé sur la base de la disponibilité machine. Les facteurs de performance et qualité seront intégrés avec les données process.
+                Période : {mensuelData.periode.jours} jours — {mensuelData.periode.heures_ouverture} h d'ouverture.
+              </p>
+            </div>
+          );
+        })() : (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            Sélectionnez un mois et cliquez sur <strong>Générer</strong> pour afficher les indicateurs OEE / MTBF / MTTR.
+          </p>
+        )}
+      </section>
 
       {/* ── Modal édition suivi ─────────────────────────────── */}
       {actionEdit && (

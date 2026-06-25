@@ -212,11 +212,12 @@ export const dashboardAPI = {
 
 // ── Rapports & Exports ───────────────────────────────────────────
 export const rapportsAPI = {
-    journalier:     p => api.get('/rapports/journalier-maintenance', { params: p, responseType: 'blob' }),
-    hebdomadaire:   p => api.get('/rapports/hebdomadaire',           { params: p, responseType: 'blob' }),
-    ficheEquipement:id=> api.get(`/rapports/equipement/${id}`,       { responseType: 'blob' }),
-    exportExcel:    p => api.get('/rapports/export-excel',           { params: p, responseType: 'blob' }),
-    exportCsv:      p => api.get('/rapports/export-csv',             { params: p, responseType: 'blob' }),
+    journalier:          p => api.get('/rapports/journalier-maintenance',  { params: p, responseType: 'blob' }),
+    hebdomadaire:        p => api.get('/rapports/hebdomadaire',            { params: p, responseType: 'blob' }),
+    ficheEquipement:    id => api.get(`/rapports/equipement/${id}`,        { responseType: 'blob' }),
+    exportExcel:         p => api.get('/rapports/export-excel',            { params: p, responseType: 'blob' }),
+    exportCsv:           p => api.get('/rapports/export-csv',              { params: p, responseType: 'blob' }),
+    mensuelIndicateurs:  p => api.get('/rapports/mensuel-indicateurs',     { params: p }),
 };
 
 // ── Helpers ──────────────────────────────────────────────────────
