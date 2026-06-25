@@ -127,14 +127,16 @@ export default function SoumissionDetailPage() {
     setExporting(type);
     try {
       if (type === 'pdf') {
-        const res  = await soumissionsAPI.exporterPDF(id);
-        const code = s?.formulaire_code?.replace(/[^a-zA-Z0-9-]/g, '_') || 'soumission';
-        const date = s?.date_soumission?.toString().slice(0,10) || new Date().toISOString().slice(0,10);
-        const url  = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
-        const a    = document.createElement('a');
-        a.href = url; a.download = `${code}_${date}.pdf`; a.click();
-        URL.revokeObjectURL(url);
-        toast.success('Téléchargement PDF démarré !');
+        const res = await soumissionsAPI.exporterPDF(id);
+        const win = window.open('', '_blank');
+        if (!win) {
+          toast.error('Popup bloqué — autorisez les popups pour ce site');
+          return;
+        }
+        win.document.open();
+        win.document.write(res.data);
+        win.document.close();
+        toast.success('Utilisez Ctrl+P pour enregistrer en PDF');
       } else {
         const res  = await soumissionsAPI.exporterExcel(id);
         const code = s?.formulaire_code?.replace(/[^a-zA-Z0-9-]/g, '_') || 'soumission';
