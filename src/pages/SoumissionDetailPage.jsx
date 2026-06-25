@@ -126,17 +126,24 @@ export default function SoumissionDetailPage() {
   const handleExport = async (type) => {
     setExporting(type);
     try {
-      const res = type === 'pdf'
-        ? await soumissionsAPI.exporterPDF(id)
-        : await soumissionsAPI.exporterExcel(id);
-      const ext  = type === 'pdf' ? 'pdf' : 'xlsx';
-      const code = s?.formulaire_code?.replace(/[^a-zA-Z0-9-]/g, '_') || 'soumission';
-      const date = s?.date_soumission?.toString().slice(0,10) || new Date().toISOString().slice(0,10);
-      const url  = URL.createObjectURL(new Blob([res.data]));
-      const a    = document.createElement('a');
-      a.href = url; a.download = `${code}_${date}.${ext}`; a.click();
-      URL.revokeObjectURL(url);
-      toast.success('Téléchargement démarré !');
+      if (type === 'pdf') {
+        // Ouvre le HTML imprimable dans un nouvel onglet
+        const res = await soumissionsAPI.exporterPDF(id);
+        const blob = new Blob([res.data], { type: 'text/html; charset=utf-8' });
+        const url  = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        toast.success('Fenêtre ouverte — utilisez Ctrl+P pour imprimer/sauvegarder en PDF');
+      } else {
+        const res  = await soumissionsAPI.exporterExcel(id);
+        const code = s?.formulaire_code?.replace(/[^a-zA-Z0-9-]/g, '_') || 'soumission';
+        const date = s?.date_soumission?.toString().slice(0,10) || new Date().toISOString().slice(0,10);
+        const url  = URL.createObjectURL(new Blob([res.data]));
+        const a    = document.createElement('a');
+        a.href = url; a.download = `${code}_${date}.xlsx`; a.click();
+        URL.revokeObjectURL(url);
+        toast.success('Téléchargement Excel démarré !');
+      }
     } catch { toast.error("Erreur lors de l'export"); }
     finally { setExporting(''); }
   };
