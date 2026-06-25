@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { dashboardAPI, soumissionsAPI, matieresAPI } from '../services/api';
+import { dashboardAPI, soumissionsAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import DashboardMaintenancePage from './DashboardMaintenancePage';
 import {
@@ -67,7 +67,7 @@ function DashboardProduction({ user }) {
   const [prod,      setProd]      = useState(null);
   const [adoption,  setAdoption]  = useState(null);
   const [activite,  setActivite]  = useState([]);
-  const [matieres,  setMatieres]  = useState({ total: 0, en_alerte: 0, en_rupture: 0 });
+
   const [recentes,  setRecentes]  = useState([]);
   const [loading,   setLoading]   = useState(true);
 
@@ -77,7 +77,6 @@ function DashboardProduction({ user }) {
       dashboardAPI.production(),
       dashboardAPI.adoption(),
       dashboardAPI.activite(),
-      matieresAPI.stats(),
       soumissionsAPI.lister({ module: 'PRODUCTION', limit: 8, page: 1 }),
     ])
       .then(([s, p, ad, ac, mp, rec]) => {

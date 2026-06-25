@@ -99,8 +99,66 @@ function trouver(preds, nom) {
 function CarteEquipement({ e }) {
   const { preds, loading } = usePredictions();
   const pred = trouver(preds, e.nom);
+  const [showHistorique, setShowHistorique] = useState(false);
+  const [historique, setHistorique]         = useState([]);
+  const [loadingHist, setLoadingHist]       = useState(false);
+
+  const openHistorique = async () => {
+    setShowHistorique(true);
+    if (historique.length > 0) return;
+    setLoadingHist(true);
+    try {
+      const { data } = await equipementsAPI.historique(e.id);
+      setHistorique(Array.isArray(data) ? data : []);
+    } catch { toast.error('Erreur historique'); }
+    finally { setLoadingHist(false); }
+  };
 
   return (
+    <>
+    {showHistorique && (
+      <div className="modal-overlay">
+        <div className="modal max-w-lg p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-lg">Historique — {e.nom}</h3>
+            <button onClick={() => setShowHistorique(false)}><X size={18} className="text-muted-foreground"/></button>
+          </div>
+          <p className="text-xs text-muted-foreground font-mono">{e.code_ref}</p>
+          {loadingHist ? (
+            <div className="flex justify-center py-8">
+              <div className="w-7 h-7 border-4 border-primary border-t-transparent rounded-full animate-spin"/>
+            </div>
+          ) : historique.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8 text-sm">Aucun historique disponible</p>
+          ) : (
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {historique.map((h, i) => (
+                <div key={i} className="flex items-start gap-3 p-3 bg-muted/30 rounded-xl text-sm">
+                  <span className={`flex-shrink-0 text-xs font-bold px-2 py-0.5 rounded ${
+                    h.etat === 'EN_PANNE' ? 'bg-red-500/20 text-red-400' :
+                    h.etat === 'EN_MAINTENANCE' ? 'bg-amber-500/20 text-amber-400' :
+                    'bg-green-500/20 text-green-400'
+                  }`}>{h.etat?.replace(/_/g,' ') || 'Action'}</span>
+                  <div className="flex-1 min-w-0">
+                    {h.action && <p className="text-xs font-medium text-foreground">{h.action}</p>}
+                    {h.message && <p className="text-xs text-muted-foreground">{h.message}</p>}
+                    {(h.utilisateur_nom || h.user_nom) && (
+                      <p className="text-xs text-muted-foreground">
+                        {h.utilisateur_prenom || h.user_prenom} {h.utilisateur_nom || h.user_nom}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground flex-shrink-0">
+                    {h.date ? new Date(h.date).toLocaleDateString('fr-FR') :
+                     h.timestamp ? new Date(h.timestamp).toLocaleDateString('fr-FR') : '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )}
     <div className="card hover:shadow-lg transition-shadow" style={{ display:'flex', flexDirection:'column' }}>
       {/* En-tête */}
       <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:12 }}>
@@ -121,9 +179,16 @@ function CarteEquipement({ e }) {
 
       {/* Badge état */}
       <span className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full ${ETAT_COLOR[e.etat] || 'badge-gray'}`}
-        style={{alignSelf:'flex-start', marginBottom:16}}>
+        style={{alignSelf:'flex-start', marginBottom:10}}>
         {e.etat?.replace(/_/g,' ')}
       </span>
+
+      {/* Bouton historique */}
+      <button onClick={openHistorique}
+        className="text-xs text-primary hover:underline mb-3 text-left flex items-center gap-1"
+        style={{ background:'none', border:'none', padding:0, cursor:'pointer' }}>
+        📋 Voir l'historique
+      </button>
 
       {/* Séparateur */}
       <div style={{ borderTop:'1px solid var(--border)', paddingTop:12, marginTop:'auto' }}>
@@ -157,6 +222,7 @@ function CarteEquipement({ e }) {
       </div>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
+    </>
   );
 }
 
