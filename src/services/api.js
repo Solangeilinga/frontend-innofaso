@@ -74,7 +74,7 @@ export const soumissionsAPI = {
     valider:      (id, d)  => api.patch(`/soumissions/${id}/statut`, d),
     updateEntete:  (id, d)  => api.put(`/soumissions/${id}/entete`, d),
     updateValeurs: (id, d)  => api.patch(`/soumissions/${id}/valeurs`, d),
-    exporterPDF:   id       => api.get(`/soumissions/${id}/export/pdf`,   { responseType: 'text' }),
+    exporterPDF:   id       => api.get(`/soumissions/${id}/export/pdf`,   { responseType: 'blob' }),
     exporterExcel: id       => api.get(`/soumissions/${id}/export/excel`, { responseType: 'blob' }),
     sync:         d        => api.post('/soumissions/sync', d),
     exporter:     p        => api.get('/soumissions/export/excel', { params: p, responseType: 'blob' }),
@@ -218,6 +218,7 @@ export const rapportsAPI = {
     exportExcel:         p => api.get('/rapports/export-excel',            { params: p, responseType: 'blob' }),
     exportCsv:           p => api.get('/rapports/export-csv',              { params: p, responseType: 'blob' }),
     mensuelIndicateurs:  p => api.get('/rapports/mensuel-indicateurs',     { params: p }),
+    mensuelPDF:          p => api.get('/rapports/mensuel-indicateurs/pdf', { params: p, responseType: 'blob' }),
 };
 
 // ── Helpers ──────────────────────────────────────────────────────

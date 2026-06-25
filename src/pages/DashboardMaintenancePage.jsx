@@ -709,6 +709,26 @@ export default function DashboardMaintenancePage() {
               {mensuelLoading ? <Loader2 size={14} className="animate-spin" /> : <BarChart2 size={14} />}
               Générer
             </button>
+            {mensuelData && (
+              <button
+                type="button"
+                className="btn-secondary text-sm flex items-center gap-1.5"
+                onClick={async () => {
+                  try {
+                    const { data } = await rapportsAPI.mensuelPDF({ annee: mensuelAnnee, mois: mensuelMois });
+                    const url = URL.createObjectURL(new Blob([data], { type: 'application/pdf' }));
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `rapport_mensuel_${mensuelAnnee}-${String(mensuelMois).padStart(2,'0')}.pdf`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch { toast.error('Erreur export PDF'); }
+                }}
+              >
+                <BarChart2 size={14} />
+                Exporter PDF
+              </button>
+            )}
           </div>
         </div>
 
