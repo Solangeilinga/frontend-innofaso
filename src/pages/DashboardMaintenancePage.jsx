@@ -3,52 +3,100 @@ import { planningAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
   Activity, Wrench, TrendingUp, ChevronLeft, ChevronRight, Save,
-  Target, AlertTriangle, Clock, Gauge,
+  Target, AlertTriangle, Clock, Gauge, ArrowUpRight, ArrowDownRight,
+  CheckCircle2,
 } from 'lucide-react';
 
-const PIE_COLORS = ['#4DB8A8', '#dc2626'];
-const CHART_COLORS = ['#4DB8A8', '#dc2626', '#8b5cf6'];
+const PIE_COLORS = ['#10b981', '#ef4444'];
+const CHART_COLORS = ['#10b981', '#ef4444', '#8b5cf6'];
 
-function Kpi({ icon: Icon, label, value, sub, accent = 'primary' }) {
-  const ring = {
-    primary: 'bg-primary/10 text-primary',
-    secondary: 'bg-secondary/15 text-secondary',
-    red: 'bg-red-100 text-red-600',
-    emerald: 'bg-emerald-100 text-emerald-700',
-    amber: 'bg-amber-100 text-amber-700',
-  };
+const ACCENT = {
+  primary:  { iconBg:'from-emerald-500/20 to-emerald-600/10', icon:'text-emerald-600', bar:'bg-emerald-500', border:'border-l-emerald-500' },
+  secondary:{ iconBg:'from-amber-500/20 to-amber-600/10', icon:'text-amber-600', bar:'bg-amber-500', border:'border-l-amber-500' },
+  red:      { iconBg:'from-red-500/20 to-red-600/10', icon:'text-red-600', bar:'bg-red-500', border:'border-l-red-500' },
+  emerald:  { iconBg:'from-emerald-500/20 to-emerald-600/10', icon:'text-emerald-600', bar:'bg-emerald-500', border:'border-l-emerald-500' },
+  amber:    { iconBg:'from-amber-500/20 to-amber-600/10', icon:'text-amber-600', bar:'bg-amber-500', border:'border-l-amber-500' },
+};
+
+function MiniSparkline({ value, good }) {
+  const color = good ? '#10b981' : '#ef4444';
+  const w = 56; const h = 24;
+  const p = value / 100;
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0">
+      <rect x="0" y="0" width={w} height={h} rx={4} fill="#f1f5f9" />
+      <rect x="2" y="2" width={(w - 4) * Math.min(p, 1)} height={h - 4} rx={3} fill={color} opacity={0.25} />
+      <rect x="2" y={(h - 4) / 2} width={(w - 4) * Math.min(p, 1)} height={4} rx={2} fill={color} />
+    </svg>
+  );
+}
+
+function Kpi({ icon: Icon, label, value, sub, accent = 'primary', trend, progress }) {
+  const c = ACCENT[accent] || ACCENT.primary;
+  const trendUp = trend > 0;
+  return (
+    <div className={`relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md border-l-4 ${c.border}`}>
       <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
-          {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
+          <p className="mt-1.5 text-2xl font-bold text-foreground tabular-nums">{value}</p>
+          {sub && <p className="mt-0.5 text-xs text-muted-foreground/80">{sub}</p>}
+          {trend !== undefined && (
+            <div className={`mt-2 flex items-center gap-1 text-xs font-medium ${trendUp ? 'text-emerald-600' : 'text-red-500'}`}>
+              {trendUp ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+              {Math.abs(trend).toFixed(1)}% vs mois dernier
+            </div>
+          )}
         </div>
-        <div className={`rounded-xl p-2.5 ${ring[accent]}`}>
-          <Icon size={22} />
+        <div className={`rounded-xl bg-gradient-to-br p-3 ${c.iconBg}`}>
+          <Icon size={20} className={c.icon} />
         </div>
       </div>
+      {progress !== undefined && (
+        <div className="mt-4">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground mb-1.5">
+            <span>Progression</span>
+            <span className="font-semibold">{Math.min(progress, 100).toFixed(0)}%</span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div className={`h-full rounded-full transition-all ${c.bar}`} style={{ width:`${Math.min(progress, 100)}%` }} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ChartCard({ title, subtitle, children, empty }) {
+function ChartCard({ title, subtitle, children, empty, accent }) {
+  const borderClass = accent ? `border-t-4 border-t-${accent}-500` : '';
   return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="font-semibold text-foreground">{title}</h2>
-      {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+    <section className={`rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md ${borderClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-foreground flex items-center gap-2">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
+        {accent && (
+          <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider
+            ${accent === 'emerald' ? 'bg-emerald-100 text-emerald-700' :
+              accent === 'red' ? 'bg-red-100 text-red-700' :
+              'bg-blue-100 text-blue-700'}`}>{accent}</span>
+        )}
+      </div>
       <div className="mt-4 h-[280px] w-full min-h-[280px]">
         {empty ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Aucune donnée pour cette période.
+            <div className="text-center">
+              <Activity size={32} className="mx-auto mb-2 opacity-20" />
+              Aucune donnée pour cette période.
+            </div>
           </div>
         ) : children}
       </div>
@@ -125,8 +173,8 @@ const MemoEquipementModalBody = React.memo(function EquipementModalBody({ equipe
                 <XAxis dataKey="periode" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip /><Legend />
-                <Bar dataKey="heures_prev" name="Préventif" fill="#4DB8A8" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="heures_corr" name="Correctif" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="heures_prev" name="Préventif" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="heures_corr" name="Correctif" fill="#ef4444" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="heures_total" name="Total" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -160,6 +208,23 @@ const MemoEquipementModalBody = React.memo(function EquipementModalBody({ equipe
     </div>
   );
 });
+
+/* ── Tooltip personnalisé Recharts ────────────────────────────── */
+function CustomTooltip({ active, payload, label, formatter }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-xl">
+      <p className="text-xs font-semibold text-muted-foreground mb-2">{label}</p>
+      {payload.map((p, i) => (
+        <div key={i} className="flex items-center gap-2 text-sm">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: p.color }} />
+          <span className="text-muted-foreground">{p.name}:</span>
+          <span className="font-semibold">{formatter ? formatter(p.value) : p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function DashboardMaintenancePage() {
   const { peutGerer } = useAuth();
@@ -254,29 +319,47 @@ export default function DashboardMaintenancePage() {
     );
   }
 
-  return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
-      <header>
-        <h1 className="text-2xl font-bold text-foreground md:text-3xl">Dashboard maintenance</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Indicateurs, graphiques et suivi — {moisNom}
-        </p>
-      </header>
+  const totalInterventions = kpis.nb_interventions || 0;
+  const totalValides = kpis.nb_valides || 0;
+  const achèvement = totalInterventions > 0 ? (totalValides / totalInterventions) * 100 : 0;
 
-      <div className="card-sm flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-input px-1">
-          <button type="button" onClick={() => shiftMonth(-1)} className="rounded p-2 hover:bg-muted">
-            <ChevronLeft size={18} />
-          </button>
-          <span className="min-w-[140px] px-2 text-center text-sm font-semibold capitalize">{moisNom}</span>
-          <button type="button" onClick={() => shiftMonth(1)} className="rounded p-2 hover:bg-muted">
-            <ChevronRight size={18} />
-          </button>
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6 animate-fade-in">
+      {/* ── Header ──────────────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-gradient-to-br from-emerald-600/5 via-card to-emerald-600/[0.02] p-6 shadow-sm">
+        <div className="absolute -right-20 -top-20 h-40 w-40 rounded-full bg-emerald-500/5 blur-3xl" />
+        <div className="absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-emerald-500/5 blur-3xl" />
+        <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-emerald-500 p-2 shadow-sm">
+                <Activity size={18} className="text-white" />
+              </div>
+              <h1 className="text-2xl font-bold text-foreground md:text-3xl">Dashboard maintenance</h1>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Indicateurs, graphiques et suivi des interventions — <span className="font-semibold text-foreground">{moisNom}</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-card/80 px-3 py-2 shadow-sm backdrop-blur-sm">
+            <button type="button" onClick={() => shiftMonth(-1)} className="rounded-lg p-1.5 hover:bg-muted transition-colors">
+              <ChevronLeft size={16} />
+            </button>
+            <span className="min-w-[130px] px-2 text-center text-sm font-semibold capitalize">{moisNom}</span>
+            <button type="button" onClick={() => shiftMonth(1)} className="rounded-lg p-1.5 hover:bg-muted transition-colors">
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
+      </div>
+
+      {/* ── Filtre ligne ────────────────────────────────────── */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Filtrer par ligne</span>
         <select
           value={selectedLigne}
           onChange={e => setSelectedLigne(e.target.value)}
-          className="input max-w-xs"
+          className="input max-w-xs text-sm"
         >
           <option value="">Toutes les lignes</option>
           {Array.isArray(lignes) && lignes.map(l => (
@@ -285,20 +368,28 @@ export default function DashboardMaintenancePage() {
         </select>
       </div>
 
+      {/* ── KPI Grid ────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <Kpi
           icon={Activity}
           label="Formulaires soumis"
-          value={kpis.nb_interventions || 0}
-          sub={`${kpis.nb_valides || 0} validés · ${kpis.nb_en_attente || 0} en attente`}
+          value={totalInterventions}
+          sub={
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 size={12} className="text-emerald-500" />
+              {totalValides} validés · {kpis.nb_en_attente || 0} en attente
+            </span>
+          }
           accent="primary"
+          progress={achèvement}
         />
         <Kpi
           icon={Target}
           label="Taux de validation"
           value={`${Number(kpis.taux_validation || 0).toFixed(0)}%`}
-          sub={`${kpis.nb_valides || 0} / ${kpis.nb_interventions || 0}`}
+          sub={`${totalValides} / ${totalInterventions} formulaires`}
           accent={Number(kpis.taux_validation || 0) < 80 ? 'red' : 'emerald'}
+          progress={Number(kpis.taux_validation || 0)}
         />
         <Kpi
           icon={Gauge}
@@ -306,12 +397,13 @@ export default function DashboardMaintenancePage() {
           value={`${dispoMoy.toFixed(1)}%`}
           sub={`Cible 90% · ${kpis.taux_atteinte_cible || 0}% d'atteinte`}
           accent={dispoMoy < 75 ? 'red' : dispoMoy < 90 ? 'amber' : 'emerald'}
+          trend={kpis.tendance_dispo}
         />
         <Kpi
           icon={Clock}
           label="Arrêts totaux"
           value={`${Number(kpis.total_arrets || 0).toFixed(1)}h`}
-          sub={`Préventif: ${Number(kpis.total_arrets || 0).toFixed(1)}h · Correctif: ${Number(kpis.heures_correctives || 0).toFixed(1)}h`}
+          sub={`Préventif ${Number(kpis.total_arrets || 0).toFixed(1)}h · Correctif ${Number(kpis.heures_correctives || 0).toFixed(1)}h`}
           accent="red"
         />
         <Kpi
@@ -330,36 +422,52 @@ export default function DashboardMaintenancePage() {
         />
       </div>
 
+      {/* ── Alerte disponibilité ────────────────────────────── */}
       {tauxSousCible && (
-        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <AlertTriangle size={20} />
-          La disponibilité moyenne ({dispoMoy.toFixed(1)}%) est sous la cible de 90% ce mois-ci.
+        <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-50/50 px-4 py-3 text-sm text-amber-900 shadow-sm">
+          <div className="rounded-full bg-amber-200 p-1.5">
+            <AlertTriangle size={16} />
+          </div>
+          <span>La disponibilité moyenne (<strong>{dispoMoy.toFixed(1)}%</strong>) est sous la cible de 90% ce mois-ci.</span>
         </div>
       )}
 
+      {/* ── Graphiques ligne 1 ──────────────────────────────── */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <ChartCard
-          title="Évolution annuelle — soumissions"
-          subtitle="12 mois glissants"
+          title="Évolution annuelle"
+          subtitle="Soumissions sur 12 mois glissants"
           empty={!hasEvolution}
+          accent="emerald"
         >
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={evolution}>
+            <AreaChart data={evolution}>
+              <defs>
+                <linearGradient id="gradSoumissions" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gradValides" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip />
+              <Tooltip content={<CustomTooltip />} />
               <Legend />
-              <Line type="monotone" dataKey="nb_soumissions" name="Soumissions" stroke="#4DB8A8" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="nb_valides" name="Validées" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
+              <Area type="monotone" dataKey="nb_soumissions" name="Soumissions" stroke="#10b981" strokeWidth={2} fill="url(#gradSoumissions)" dot={{ r: 3, fill: '#10b981' }} />
+              <Area type="monotone" dataKey="nb_valides" name="Validées" stroke="#22c55e" strokeWidth={2} fill="url(#gradValides)" dot={{ r: 3, fill: '#22c55e' }} />
+            </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
 
         <ChartCard
-          title="Répartition correctif / préventif"
-          subtitle={`Mois de ${moisNom} — heures d'arrêt`}
+          title="Réparation correctif / préventif"
+          subtitle={`Mois de ${moisNom}`}
           empty={!hasRepartition}
+          accent="red"
         >
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -374,24 +482,28 @@ export default function DashboardMaintenancePage() {
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip formatter={v => `${Number(v).toFixed(1)} h`} />
+              <Tooltip content={<CustomTooltip formatter={v => `${Number(v).toFixed(1)} h`} />} />
               <Legend />
             </PieChart>
           </ResponsiveContainer>
         </ChartCard>
+      </div>
 
+      {/* ── Graphiques ligne 2 ──────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <ChartCard
           title="Disponibilité par ligne"
-          subtitle="Moyenne sur la période"
+          subtitle="Moyenne sur la période — cible 90%"
           empty={dispoLignes.length === 0}
+          accent="amber"
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={dispoLignes} layout="vertical" margin={{ left: 40 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="ligne" width={40} tick={{ fontSize: 12 }} />
-              <Tooltip formatter={v => [`${Number(v).toFixed(1)} %`, 'Disponibilité']} />
-              <Bar dataKey="taux" name="Taux dispo." fill="#4DB8A8" radius={[0, 4, 4, 0]} />
+              <Tooltip content={<CustomTooltip formatter={v => `${Number(v).toFixed(1)} %`} />} />
+              <Bar dataKey="taux" name="Taux dispo." fill="#f59e0b" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -400,41 +512,48 @@ export default function DashboardMaintenancePage() {
           title="Arrêts par semaine"
           subtitle="Semaines 1 à 4"
           empty={parSemaine.length === 0 || parSemaine.every(s => !s.heures)}
+          accent="red"
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={parSemaine}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="semaine" tickFormatter={v => `S${String(v).padStart(2, '0')}`} />
               <YAxis />
-              <Tooltip formatter={v => [`${Number(v).toFixed(1)} h`, 'Arrêt']} />
-              <Bar dataKey="heures" name="Heures d'arrêt" fill="#9D7855" radius={[6, 6, 0, 0]} />
+              <Tooltip content={<CustomTooltip formatter={v => `${Number(v).toFixed(1)} h`} />} />
+              <Bar dataKey="heures" name="Heures d'arrêt" fill="#ef4444" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       </div>
 
+      {/* ── Pareto ──────────────────────────────────────────── */}
       {paretoCauses.length > 0 && (
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <h2 className="font-semibold text-foreground">Pareto des causes d'indisponibilité</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Top 10 causes — {moisNom}</p>
-          <div className="mt-4 h-[280px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={paretoCauses} layout="vertical" margin={{ left: 140 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="cause" width={130} tick={{ fontSize: 11 }} />
-                <Tooltip formatter={v => [`${Number(v).toFixed(1)} h`, 'Heures d\'arrêt']} />
-                <Bar dataKey="heures" name="Heures d'arrêt" fill="#dc2626" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
+        <ChartCard
+          title="Pareto des causes d'indisponibilité"
+          subtitle={`Top 10 causes — ${moisNom}`}
+          empty={false}
+          accent="red"
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={paretoCauses} layout="vertical" margin={{ left: 140 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" tick={{ fontSize: 11 }} />
+              <YAxis type="category" dataKey="cause" width={130} tick={{ fontSize: 11 }} />
+              <Tooltip content={<CustomTooltip formatter={v => `${Number(v).toFixed(1)} h`} />} />
+              <Bar dataKey="heures" name="Heures d'arrêt" fill="#ef4444" radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
       )}
 
+      {/* ── Tableau maintenanciers ──────────────────────────── */}
       {parMaint.length > 0 && (
         <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-          <div className="border-b border-border bg-muted/40 px-5 py-4">
-            <h2 className="font-semibold">Par maintenancier</h2>
+          <div className="border-b border-border bg-gradient-to-r from-emerald-500/5 to-transparent px-5 py-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Wrench size={16} className="text-emerald-600" />
+              Par maintenancier
+            </h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -471,6 +590,7 @@ export default function DashboardMaintenancePage() {
         </section>
       )}
 
+      {/* ── Équipements par ligne ───────────────────────────── */}
       {Array.isArray(parLigne) && parLigne.length === 0 && (
         <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
           Aucun équipement trouvé pour cette période.
@@ -520,7 +640,7 @@ export default function DashboardMaintenancePage() {
                     <td className="td text-xs">{eq.delai ? format(new Date(eq.delai), 'dd/MM/yy') : '—'}</td>
                     {peutGerer() && (
                       <td className="td">
-                        <button type="button" className="rounded-lg p-1.5 hover:bg-muted"
+                        <button type="button" className="rounded-lg p-1.5 hover:bg-muted transition-colors"
                           onClick={() => setActionEdit({
                             equipement_id: eq.equipement_id,
                             difficulte: eq.difficulte || '',
@@ -541,6 +661,7 @@ export default function DashboardMaintenancePage() {
         </section>
       ))}
 
+      {/* ── Modal édition suivi ─────────────────────────────── */}
       {actionEdit && (
         <div className="modal-overlay">
           <div className="modal max-w-lg p-6">
