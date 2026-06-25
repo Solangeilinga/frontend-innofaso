@@ -72,7 +72,7 @@ export default function Sidebar({ compact = false, onClose }) {
           {!compact && (
             <div className="min-w-0 flex-1">
               <p className="font-bold text-base text-foreground leading-tight">InnoFaso</p>
-              <p className="text-xs text-muted-foreground">Gestion Digitale v2</p>
+              <p className="text-xs text-muted-foreground">Gestion Digitale</p>
             </div>
           )}
           {onClose && (
