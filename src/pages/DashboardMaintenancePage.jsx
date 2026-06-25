@@ -350,9 +350,6 @@ export default function DashboardMaintenancePage() {
         <div className="relative flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <div className="rounded-lg bg-emerald-500 p-2 shadow-sm">
-                <Activity size={18} className="text-white" />
-              </div>
               <h1 className="text-2xl font-bold text-foreground md:text-3xl">Dashboard maintenance</h1>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -735,12 +732,12 @@ export default function DashboardMaintenancePage() {
         {mensuelData ? (() => {
           const g = mensuelData.globaux;
           const kpis = [
-            { label: 'OEE',           value: g.oee_pct != null           ? `${g.oee_pct} %`           : '—', color: 'text-emerald-600' },
-            { label: 'Disponibilité', value: g.disponibilite_pct != null ? `${g.disponibilite_pct} %` : '—', color: 'text-blue-600' },
-            { label: 'MTBF',          value: g.mtbf_h != null            ? `${g.mtbf_h} h`            : '—', color: 'text-violet-600' },
-            { label: 'MTTR',          value: g.mttr_h != null            ? `${g.mttr_h} h`            : '—', color: 'text-orange-500' },
-            { label: 'Correctifs',    value: g.nb_pannes_total,                                              color: 'text-red-500' },
-            { label: 'Signalements',  value: g.nb_signalements,                                             color: 'text-amber-500' },
+            { label: 'OEE',          value: g.oee_pct != null          ? `${g.oee_pct} %`   : '—', color: 'text-emerald-600' },
+            { label: 'Disponibilité',value: g.disponibilite_pct != null ? `${g.disponibilite_pct} %` : '—', color: 'text-blue-600' },
+            { label: 'MTBF',         value: g.mtbf_h != null           ? `${g.mtbf_h} h`    : '—', color: 'text-violet-600' },
+            { label: 'MTTR',         value: g.mttr_h != null           ? `${g.mttr_h} h`    : '—', color: 'text-orange-500' },
+            { label: 'Nb pannes',    value: g.nb_pannes_total,                                       color: 'text-red-500' },
+            { label: 'Arrêt total',  value: `${g.total_arret_h} h`,                                  color: 'text-gray-600' },
           ];
           return (
             <div className="space-y-5">

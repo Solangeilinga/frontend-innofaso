@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './store/auth';
 import App from './App';
 import './styles/global.css';
+import '@flaticon/flaticon-uicons/css/regular/rounded.css';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
