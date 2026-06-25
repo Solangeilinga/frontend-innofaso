@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { planningAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
@@ -9,11 +9,12 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import {
-  Activity, Wrench, TrendingUp, ChevronLeft, ChevronRight, Layers, Save,
-  Target, AlertTriangle, Clock,
+  Activity, Wrench, TrendingUp, ChevronLeft, ChevronRight, Save,
+  Target, AlertTriangle, Clock, Gauge,
 } from 'lucide-react';
 
-const PIE_COLORS = ['#dc2626', '#4DB8A8', '#9D7855', '#6366f1'];
+const PIE_COLORS = ['#4DB8A8', '#dc2626'];
+const CHART_COLORS = ['#4DB8A8', '#dc2626', '#8b5cf6'];
 
 function Kpi({ icon: Icon, label, value, sub, accent = 'primary' }) {
   const ring = {
@@ -47,15 +48,118 @@ function ChartCard({ title, subtitle, children, empty }) {
       <div className="mt-4 h-[280px] w-full min-h-[280px]">
         {empty ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            Aucune donnée pour cette période — les graphiques s&apos;afficheront après les premières interventions.
+            Aucune donnée pour cette période.
           </div>
-        ) : (
-          children
-        )}
+        ) : children}
       </div>
     </section>
   );
 }
+
+function EqDetailLink({ eq, groupeLigne }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <button type="button" className="font-medium text-left hover:text-primary hover:underline" onClick={() => setOpen(true)}>
+        {eq.equipement_nom}
+      </button>
+    );
+  }
+  const eqData = { id: eq.equipement_id, nom: eq.equipement_nom, code_ref: eq.equipement_code, ligne: groupeLigne };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <button type="button" className="float-right rounded-lg p-2 hover:bg-muted" onClick={() => setOpen(false)}>✕</button>
+        <MemoEquipementModalBody equipement={eqData} />
+      </div>
+    </div>
+  );
+}
+
+const MemoEquipementModalBody = React.memo(function EquipementModalBody({ equipement }) {
+  const [type, setType] = useState('mois');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 7) + '-01');
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!equipement?.id) return;
+    setLoading(true);
+    planningAPI.detailEquipementMaintenance(equipement.id, { type, date })
+      .then(r => setData(r.data || {}))
+      .catch(() => setData({ detail: [], observations_frequentes: [], temps_max: null }))
+      .finally(() => setLoading(false));
+  }, [equipement?.id, type, date]);
+
+  const isAnnee = type === 'annee';
+
+  return (
+    <div>
+      <h2 className="text-xl font-bold mb-1">{equipement.nom}</h2>
+      <p className="text-sm text-muted-foreground mb-4">{equipement.code_ref} · {equipement.ligne}</p>
+
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="flex rounded-lg border border-border overflow-hidden">
+          {['jour', 'mois', 'annee'].map(t => (
+            <button key={t} type="button"
+              className={`px-4 py-1.5 text-sm font-medium ${type === t ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+              onClick={() => setType(t)}
+            >{t === 'jour' ? 'Jour' : t === 'mois' ? 'Mois' : 'Année'}</button>
+          ))}
+        </div>
+        {!isAnnee ? (
+          <input type="month" value={date.slice(0, 7)} onChange={e => setDate(e.target.value + '-01')} className="input max-w-[160px] text-sm" />
+        ) : (
+          <input type="number" value={date.slice(0, 4)} onChange={e => setDate(e.target.value + '-01-01')} className="input max-w-[100px] text-sm" min="2020" max="2030" />
+        )}
+      </div>
+
+      {loading ? (
+        <div className="flex h-40 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
+      ) : (
+        <>
+          <div className="h-[280px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data?.detail || []}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="periode" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip /><Legend />
+                <Bar dataKey="heures_prev" name="Préventif" fill="#4DB8A8" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="heures_corr" name="Correctif" fill="#dc2626" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="heures_total" name="Total" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border border-border bg-muted/30 p-4">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2">Observations fréquentes / critiques</h3>
+              {data?.observations_frequentes?.length > 0 ? (
+                <ul className="space-y-1.5">
+                  {data.observations_frequentes.map((obs, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                      <span>{obs.texte} <span className="text-muted-foreground">({obs.nb}x)</span></span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="text-sm text-muted-foreground">Aucune observation</p>}
+            </div>
+            <div className="rounded-xl border border-border bg-muted/30 p-4">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-2">Temps le plus élevé</h3>
+              {data?.temps_max ? (
+                <div className="text-sm">
+                  <span className="font-bold text-lg">{Number(data.temps_max.duree_max).toFixed(1)}h</span>
+                  <span className="ml-2 text-muted-foreground">({data.temps_max.type})</span>
+                </div>
+              ) : <p className="text-sm text-muted-foreground">—</p>}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+});
 
 export default function DashboardMaintenancePage() {
   const { peutGerer } = useAuth();
@@ -106,38 +210,26 @@ export default function DashboardMaintenancePage() {
 
   const moisNom = format(new Date(annee, mois - 1, 1), 'MMMM yyyy', { locale: fr });
   const kpis = synthese?.kpis || {};
-  const parMaint = Array.isArray(synthese?.par_maintenancier) ? synthese.par_maintenancier : [];
-  const parFormulaire = Array.isArray(synthese?.par_formulaire) ? synthese.par_formulaire : [];
 
-  const tauxSousCible = Number(kpis.taux_validation || 0) < 80 && kpis.nb_interventions > 0;
-
-  const groupedMaint = useMemo(() => {
-    return parMaint.map(row => ({
-      maintenancier_nom: row.maintenancier_nom || 'Inconnu',
-      lignes: '—',
-      nb_interventions: Number(row.nb_interventions || 0),
-      heures: 0,
-      taux_moyen: null,
-      commentaire: '—',
-      nb_valides: Number(row.nb_valides || 0),
-    }));
-  }, [parMaint]);
+  const dispoMoy = Number(kpis.disponibilite_moyenne || 0);
+  const tauxSousCible = dispoMoy > 0 && dispoMoy < 90;
 
   const evolution = Array.isArray(graphs?.evolution) ? graphs.evolution : [];
   const hasEvolution = evolution.some(e => e.nb_soumissions > 0 || e.nb_interventions > 0);
-  const dispoLignes  = Array.isArray(graphs?.dispo_par_ligne) ? graphs.dispo_par_ligne : [];
-  const repartition  = Array.isArray(graphs?.repartition)     ? graphs.repartition     : [];
+  const dispoLignes = Array.isArray(graphs?.dispo_par_ligne) ? graphs.dispo_par_ligne : [];
+  const repartition = Array.isArray(graphs?.repartition) ? graphs.repartition : [];
   const hasRepartition = repartition.some(r => r.value > 0);
-  const parEquipement = Array.isArray(graphs?.par_equipement) ? graphs.par_equipement : [];
-  const parSemaine   = [];
+  const parSemaine = Array.isArray(graphs?.par_semaine) ? graphs.par_semaine : [];
+  const paretoCauses = Array.isArray(graphs?.pareto_causes) ? graphs.pareto_causes : [];
+
+  const parMaint = Array.isArray(synthese?.par_maintenancier) ? synthese.par_maintenancier : [];
 
   const saveAction = async () => {
     if (!actionEdit) return;
     try {
       await planningAPI.enregistrerSuiviAction({
         equipement_id: actionEdit.equipement_id,
-        mois,
-        annee,
+        mois, annee,
         difficulte: actionEdit.difficulte,
         action: actionEdit.action,
         responsable: actionEdit.responsable,
@@ -167,7 +259,7 @@ export default function DashboardMaintenancePage() {
       <header>
         <h1 className="text-2xl font-bold text-foreground md:text-3xl">Dashboard maintenance</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Indicateurs, graphiques et suivi par ligne (L1, L2, L4) — {moisNom}
+          Indicateurs, graphiques et suivi — {moisNom}
         </p>
       </header>
 
@@ -205,48 +297,50 @@ export default function DashboardMaintenancePage() {
           icon={Target}
           label="Taux de validation"
           value={`${Number(kpis.taux_validation || 0).toFixed(0)}%`}
-          sub={tauxSousCible ? 'Sous la cible 80%' : 'Dans la cible'}
-          accent={tauxSousCible ? 'red' : 'emerald'}
+          sub={`${kpis.nb_valides || 0} / ${kpis.nb_interventions || 0}`}
+          accent={Number(kpis.taux_validation || 0) < 80 ? 'red' : 'emerald'}
         />
         <Kpi
-          icon={Wrench}
-          label="Formulaires rejetés"
-          value={kpis.nb_rejetes || 0}
-          accent="red"
+          icon={Gauge}
+          label="Disponibilité moyenne"
+          value={`${dispoMoy.toFixed(1)}%`}
+          sub={`Cible 90% · ${kpis.taux_atteinte_cible || 0}% d'atteinte`}
+          accent={dispoMoy < 75 ? 'red' : dispoMoy < 90 ? 'amber' : 'emerald'}
         />
         <Kpi
           icon={Clock}
-          label="En attente validation"
-          value={kpis.nb_en_attente || 0}
-          accent="amber"
-        />
-        <Kpi
-          icon={Layers}
-          label="Total maintenance"
-          value={`${Number(kpis.heures_totales || 0).toFixed(1)}h`}
-          sub={`${kpis.nb_interventions || 0} interventions`}
-          accent="secondary"
+          label="Arrêts totaux"
+          value={`${Number(kpis.total_arrets || 0).toFixed(1)}h`}
+          sub={`Préventif: ${Number(kpis.total_arrets || 0).toFixed(1)}h · Correctif: ${Number(kpis.heures_correctives || 0).toFixed(1)}h`}
+          accent="red"
         />
         <Kpi
           icon={TrendingUp}
-          label="Équipements touchés"
-          value={kpis.nb_equipements || 0}
-          sub={`${groupedMaint.length} maintenancier(s) actifs`}
-          accent="primary"
+          label="MTBF"
+          value={kpis.mtbf_heures != null ? `${Number(kpis.mtbf_heures).toFixed(1)}h` : '—'}
+          sub="Temps moyen entre pannes"
+          accent="secondary"
+        />
+        <Kpi
+          icon={Wrench}
+          label="MTTR"
+          value={kpis.mttr_heures > 0 ? `${Number(kpis.mttr_heures).toFixed(1)}h` : '—'}
+          sub={`${kpis.nb_correctifs || 0} correctifs`}
+          accent={kpis.mttr_heures > 4 ? 'red' : 'emerald'}
         />
       </div>
 
       {tauxSousCible && (
         <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <AlertTriangle size={20} />
-          La disponibilité moyenne est sous la cible de 90 % ce mois-ci. Consultez les alertes et le planning.
+          La disponibilité moyenne ({dispoMoy.toFixed(1)}%) est sous la cible de 90% ce mois-ci.
         </div>
       )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <ChartCard
-          title="Évolution annuelle — heures correctives"
-          subtitle="12 mois glissants sur l'année sélectionnée"
+          title="Évolution annuelle — soumissions"
+          subtitle="12 mois glissants"
           empty={!hasEvolution}
         >
           <ResponsiveContainer width="100%" height="100%">
@@ -254,31 +348,17 @@ export default function DashboardMaintenancePage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
               <XAxis dataKey="label" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip formatter={(v, name) => [v, name === 'nb_soumissions' ? 'Soumissions' : name]} />
+              <Tooltip />
               <Legend />
-              <Line
-                type="monotone"
-                dataKey="nb_soumissions"
-                name="Soumissions"
-                stroke="#4DB8A8"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
-              <Line
-                type="monotone"
-                dataKey="nb_valides"
-                name="Validées"
-                stroke="#22c55e"
-                strokeWidth={2}
-                dot={{ r: 3 }}
-              />
+              <Line type="monotone" dataKey="nb_soumissions" name="Soumissions" stroke="#4DB8A8" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="nb_valides" name="Validées" stroke="#22c55e" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         </ChartCard>
 
         <ChartCard
-          title="Répartition corrective / préventive"
-          subtitle={`Mois de ${moisNom}`}
+          title="Répartition correctif / préventif"
+          subtitle={`Mois de ${moisNom} — heures d'arrêt`}
           empty={!hasRepartition}
         >
           <ResponsiveContainer width="100%" height="100%">
@@ -287,10 +367,8 @@ export default function DashboardMaintenancePage() {
                 data={repartition}
                 dataKey="value"
                 nameKey="name"
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                label={({ name, value }) => `${name}: ${value.toFixed(1)}h`}
+                cx="50%" cy="50%" outerRadius={100}
+                label={({ name, value }) => `${name}: ${Number(value).toFixed(1)}h`}
               >
                 {repartition.map((_, i) => (
                   <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
@@ -308,7 +386,7 @@ export default function DashboardMaintenancePage() {
           empty={dispoLignes.length === 0}
         >
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={dispoLignes} layout="vertical" margin={{ left: 24 }}>
+            <BarChart data={dispoLignes} layout="vertical" margin={{ left: 40 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="ligne" width={40} tick={{ fontSize: 12 }} />
@@ -319,14 +397,14 @@ export default function DashboardMaintenancePage() {
         </ChartCard>
 
         <ChartCard
-          title="Arrêts par semaine du mois"
-          subtitle="Semaines 01 à 04"
+          title="Arrêts par semaine"
+          subtitle="Semaines 1 à 4"
           empty={parSemaine.length === 0 || parSemaine.every(s => !s.heures)}
         >
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={parSemaine}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="semaine" />
+              <XAxis dataKey="semaine" tickFormatter={v => `S${String(v).padStart(2, '0')}`} />
               <YAxis />
               <Tooltip formatter={v => [`${Number(v).toFixed(1)} h`, 'Arrêt']} />
               <Bar dataKey="heures" name="Heures d'arrêt" fill="#9D7855" radius={[6, 6, 0, 0]} />
@@ -335,36 +413,56 @@ export default function DashboardMaintenancePage() {
         </ChartCard>
       </div>
 
-      {groupedMaint.length > 0 && (
+      {paretoCauses.length > 0 && (
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <h2 className="font-semibold text-foreground">Pareto des causes d'indisponibilité</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Top 10 causes — {moisNom}</p>
+          <div className="mt-4 h-[280px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={paretoCauses} layout="vertical" margin={{ left: 140 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="cause" width={130} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={v => [`${Number(v).toFixed(1)} h`, 'Heures d\'arrêt']} />
+                <Bar dataKey="heures" name="Heures d'arrêt" fill="#dc2626" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      )}
+
+      {parMaint.length > 0 && (
         <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="border-b border-border bg-muted/40 px-5 py-4">
-            <h2 className="font-semibold">Par maintenancier de quart</h2>
+            <h2 className="font-semibold">Par maintenancier</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs uppercase text-muted-foreground">
                   <th className="th">Maintenancier</th>
-                  <th className="th">Lignes</th>
                   <th className="th">Interventions</th>
-                  <th className="th">Heures corr.</th>
-                  <th className="th">Taux moyen</th>
-                  <th className="th">Commentaires</th>
+                  <th className="th">Dont validées</th>
+                  <th className="th">Heures d'arrêt</th>
+                  <th className="th">Taux dispo. moyen</th>
+                  <th className="th">Quarts</th>
                 </tr>
               </thead>
               <tbody>
-                {groupedMaint.map((row, i) => (
+                {parMaint.map((row, i) => (
                   <tr key={i} className="tr">
                     <td className="td font-semibold">{row.maintenancier_nom}</td>
-                    <td className="td">{row.lignes}</td>
                     <td className="td text-center">{row.nb_interventions}</td>
-                    <td className="td text-center text-red-600">{row.heures.toFixed(1)}h</td>
+                    <td className="td text-center">{row.nb_valides}</td>
+                    <td className="td text-center text-red-600">{Number(row.heures_arret || 0).toFixed(1)}h</td>
                     <td className="td text-center">
-                      <span className={row.taux_moyen >= 90 ? 'text-emerald-600' : 'text-amber-600'}>
-                        {row.taux_moyen != null ? `${row.taux_moyen.toFixed(1)}%` : '—'}
-                      </span>
+                      {row.taux_moyen != null ? (
+                        <span className={Number(row.taux_moyen) >= 90 ? 'text-emerald-600 font-medium' : 'text-amber-600 font-medium'}>
+                          {Number(row.taux_moyen).toFixed(1)}%
+                        </span>
+                      ) : '—'}
                     </td>
-                    <td className="td max-w-xs truncate text-xs text-muted-foreground">{row.commentaire}</td>
+                    <td className="td text-center">{row.nb_shifts || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -373,7 +471,12 @@ export default function DashboardMaintenancePage() {
         </section>
       )}
 
-      {/* CORRECTION ICI: Ajout de Array.isArray avant map */}
+      {Array.isArray(parLigne) && parLigne.length === 0 && (
+        <div className="rounded-2xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+          Aucun équipement trouvé pour cette période.
+        </div>
+      )}
+
       {Array.isArray(parLigne) && parLigne.map(groupe => (
         <section key={groupe.ligne_code || groupe.id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
           <div className="flex items-center gap-3 border-b border-border bg-gradient-to-r from-primary/5 to-transparent px-5 py-4">
@@ -398,11 +501,10 @@ export default function DashboardMaintenancePage() {
                 </tr>
               </thead>
               <tbody>
-                {/* CORRECTION ICI: Sécurisation de groupe.equipements */}
-                {Array.isArray(groupe.equipements) && groupe.equipements.map(eq => (
+                  {Array.isArray(groupe.equipements) && groupe.equipements.map(eq => (
                   <tr key={eq.equipement_id} className="tr">
                     <td className="td">
-                      <div className="font-medium">{eq.equipement_nom}</div>
+                      <EqDetailLink eq={eq} groupeLigne={groupe.ligne_code || ''} />
                       <div className="text-xs text-muted-foreground">{eq.equipement_code}</div>
                     </td>
                     <td className="td text-center font-semibold text-red-600">
@@ -418,18 +520,14 @@ export default function DashboardMaintenancePage() {
                     <td className="td text-xs">{eq.delai ? format(new Date(eq.delai), 'dd/MM/yy') : '—'}</td>
                     {peutGerer() && (
                       <td className="td">
-                        <button
-                          type="button"
-                          className="rounded-lg p-1.5 hover:bg-muted"
-                          onClick={() =>
-                            setActionEdit({
-                              equipement_id: eq.equipement_id,
-                              difficulte: eq.difficulte || '',
-                              action: eq.action || '',
-                              responsable: eq.responsable || '',
-                              delai: eq.delai ? eq.delai.slice(0, 10) : '',
-                            })
-                          }
+                        <button type="button" className="rounded-lg p-1.5 hover:bg-muted"
+                          onClick={() => setActionEdit({
+                            equipement_id: eq.equipement_id,
+                            difficulte: eq.difficulte || '',
+                            action: eq.action || '',
+                            responsable: eq.responsable || '',
+                            delai: eq.delai ? eq.delai.slice(0, 10) : '',
+                          })}
                         >
                           <Save size={14} />
                         </button>
@@ -461,9 +559,7 @@ export default function DashboardMaintenancePage() {
               ))}
               <div>
                 <label className="label">Délai</label>
-                <input
-                  type="date"
-                  className="input"
+                <input type="date" className="input"
                   value={actionEdit.delai}
                   onChange={e => setActionEdit(p => ({ ...p, delai: e.target.value }))}
                 />

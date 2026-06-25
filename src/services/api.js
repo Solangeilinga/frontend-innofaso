@@ -80,12 +80,13 @@ export const soumissionsAPI = {
 
 // ── Équipements ──────────────────────────────────────────────────
 export const equipementsAPI = {
-    lister:     p        => api.get('/equipements', { params: p }),
-    getUn:      id       => api.get(`/equipements/${id}`),
-    creer:      d        => api.post('/equipements', d),
-    modifier:   (id, d)  => api.put(`/equipements/${id}`, d),
-    updateEtat: (id, d)  => api.patch(`/equipements/${id}/etat`, d),
-    historique: id       => api.get(`/equipements/${id}/historique`),
+    lister:      p        => api.get('/equipements', { params: p }),
+    getUn:       id       => api.get(`/equipements/${id}`),
+    creer:       d        => api.post('/equipements', d),
+    modifier:    (id, d)  => api.put(`/equipements/${id}`, d),
+    updateEtat:  (id, d)  => api.patch(`/equipements/${id}/etat`, d),
+    historique:  id       => api.get(`/equipements/${id}/historique`),
+    supprimer:   id       => api.delete(`/equipements/${id}`),
 };
 
 // ── Alertes ──────────────────────────────────────────────────────
@@ -155,6 +156,8 @@ export const planningAPI = {
     toggleFormulaireCorrectif:d  => api.post('/planning/correctif/toggle-formulaire', d),
     listerHistoriqueCorrectif:p  => api.get('/planning/correctif/historique', { params: p }).catch(() => ({ data: [] })),
     listerEquipementsEtLignes:() => api.get('/planning/equipements-et-lignes').catch(() => ({ data: [] })),
+    detailEquipementMaintenance: (id, p) => api.get(`/planning/equipement/${id}/detail`, { params: p }).catch(() => ({ data: { detail: [], observations_frequentes: [], temps_max: null } })),
+    courbeCorrectivesEquipements:  p => api.get('/planning/equipements/courbe-correctives', { params: p }).catch(() => ({ data: [] })),
 };
 
 // ── Planning Autre ──────────────────────────────────────────────
