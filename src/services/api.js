@@ -72,8 +72,10 @@ export const soumissionsAPI = {
     getUne:       id       => api.get(`/soumissions/${id}`),
     creer:        d        => api.post('/soumissions', d),
     valider:      (id, d)  => api.patch(`/soumissions/${id}/statut`, d),
-    updateEntete: (id, d)  => api.put(`/soumissions/${id}/entete`, d),
-    updateValeurs:(id, d)  => api.patch(`/soumissions/${id}/valeurs`, d),
+    updateEntete:  (id, d)  => api.put(`/soumissions/${id}/entete`, d),
+    updateValeurs: (id, d)  => api.patch(`/soumissions/${id}/valeurs`, d),
+    exporterPDF:   id       => api.get(`/soumissions/${id}/export/pdf`,   { responseType: 'blob' }),
+    exporterExcel: id       => api.get(`/soumissions/${id}/export/excel`, { responseType: 'blob' }),
     sync:         d        => api.post('/soumissions/sync', d),
     exporter:     p        => api.get('/soumissions/export/excel', { params: p, responseType: 'blob' }),
 };
@@ -206,6 +208,15 @@ export const dashboardAPI = {
     historique:  p  => api.get('/dashboard/historique', { params: p }),
     predictions: p  => api.get('/equipements/ia/predictions', { params: p })
                          .catch(() => ({ data: { disponible: false, predictions: [] } })),
+};
+
+// ── Rapports & Exports ───────────────────────────────────────────
+export const rapportsAPI = {
+    journalier:     p => api.get('/rapports/journalier-maintenance', { params: p, responseType: 'blob' }),
+    hebdomadaire:   p => api.get('/rapports/hebdomadaire',           { params: p, responseType: 'blob' }),
+    ficheEquipement:id=> api.get(`/rapports/equipement/${id}`,       { responseType: 'blob' }),
+    exportExcel:    p => api.get('/rapports/export-excel',           { params: p, responseType: 'blob' }),
+    exportCsv:      p => api.get('/rapports/export-csv',             { params: p, responseType: 'blob' }),
 };
 
 // ── Helpers ──────────────────────────────────────────────────────

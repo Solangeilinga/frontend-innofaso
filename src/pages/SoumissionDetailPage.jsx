@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { soumissionsAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
-import { ArrowLeft, CheckCircle, XCircle, Pencil, Save, X, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, Pencil, Save, X, AlertTriangle, Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
@@ -30,7 +30,6 @@ function renderVal(v) {
   return <span className="text-muted-foreground">—</span>;
 }
 
-// ── Modal rejet avec commentaire ─────────────────────────────────
 function ModalRejet({ onConfirm, onCancel, loading }) {
   const [raison, setRaison] = useState('');
   return (
@@ -67,7 +66,6 @@ function ModalRejet({ onConfirm, onCancel, loading }) {
   );
 }
 
-// ── Formulaire d'entête éditable ─────────────────────────────────
 function EnteteEditor({ entete, onSave, onCancel }) {
   const [f, setF] = useState(entete || {});
   const [saving, setSaving] = useState(false);
@@ -123,6 +121,25 @@ export default function SoumissionDetailPage() {
   const [validating, setValidating] = useState(false);
   const [showRejet, setShowRejet]   = useState(false);
   const [editEntete, setEditEntete] = useState(false);
+  const [exporting, setExporting]   = useState('');
+
+  const handleExport = async (type) => {
+    setExporting(type);
+    try {
+      const res = type === 'pdf'
+        ? await soumissionsAPI.exporterPDF(id)
+        : await soumissionsAPI.exporterExcel(id);
+      const ext  = type === 'pdf' ? 'pdf' : 'xlsx';
+      const code = s?.formulaire_code?.replace(/[^a-zA-Z0-9-]/g, '_') || 'soumission';
+      const date = s?.date_soumission?.toString().slice(0,10) || new Date().toISOString().slice(0,10);
+      const url  = URL.createObjectURL(new Blob([res.data]));
+      const a    = document.createElement('a');
+      a.href = url; a.download = `${code}_${date}.${ext}`; a.click();
+      URL.revokeObjectURL(url);
+      toast.success('Téléchargement démarré !');
+    } catch { toast.error("Erreur lors de l'export"); }
+    finally { setExporting(''); }
+  };
 
   const load = () => {
     setLoading(true);
@@ -133,7 +150,6 @@ export default function SoumissionDetailPage() {
   };
   useEffect(() => { load(); }, [id]);
 
-  // Peut valider selon module
   const canValider = s && (
     isAdmin() ||
     (s.module === 'MAINTENANCE' && user?.role === 'RESP_MAINT') ||
@@ -141,11 +157,8 @@ export default function SoumissionDetailPage() {
   );
 
   const handleValider = async () => {
-    // Vérifier que tous les champs SIGNATURE sont remplis
     const champsSignature = s.valeurs?.filter(v => v.type_champ === 'SIGNATURE') || [];
-    const signaturesManquantes = champsSignature.filter(v =>
-      !v.valeur_texte && !v.valeur_json
-    );
+    const signaturesManquantes = champsSignature.filter(v => !v.valeur_texte && !v.valeur_json);
     if (signaturesManquantes.length > 0) {
       toast.error(
         `${signaturesManquantes.length} signature(s) manquante(s) : ${signaturesManquantes.map(v => v.nom_champ).join(', ')}`,
@@ -219,7 +232,28 @@ export default function SoumissionDetailPage() {
               {s.source === 'HORS_LIGNE' ? 'Hors-ligne' : 'En ligne'}
             </span>
           </div>
-          <p className="text-muted-foreground text-sm truncate">{s.form_titre}</p>
+          <p className="text-muted-foreground text-sm truncate mt-0.5">{s.form_titre}</p>
+        </div>
+        {/* Boutons export */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={!!exporting}
+            title="Télécharger en PDF"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 text-xs font-semibold transition-colors disabled:opacity-50"
+          >
+            <FileText size={13}/>
+            {exporting === 'pdf' ? '…' : 'PDF'}
+          </button>
+          <button
+            onClick={() => handleExport('excel')}
+            disabled={!!exporting}
+            title="Télécharger en Excel"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 text-xs font-semibold transition-colors disabled:opacity-50"
+          >
+            <FileSpreadsheet size={13}/>
+            {exporting === 'excel' ? '…' : 'Excel'}
+          </button>
         </div>
       </div>
 
@@ -279,10 +313,8 @@ export default function SoumissionDetailPage() {
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-base">Entête officielle</h3>
-            <button
-              onClick={() => setEditEntete(true)}
-              className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-            >
+            <button onClick={() => setEditEntete(true)}
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline">
               <Pencil size={13}/> Modifier
             </button>
           </div>
