@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { equipementsAPI, dashboardAPI, planningAPI } from '../services/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { equipementsAPI, dashboardAPI, planningAPI, iaAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
@@ -93,6 +93,159 @@ function trouver(preds, nom) {
   const n = nom.toLowerCase().trim();
   return preds.find(p => p.equipement?.toLowerCase().trim() === n) ||
     preds.find(p => n.includes(p.equipement?.toLowerCase().trim())) || null;
+}
+
+function ClassifyWidget() {
+  const [text, setText] = useState('');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [useLlm, setUseLlm] = useState(false);
+
+  const handleClassify = async () => {
+    if (!text.trim()) return;
+    setLoading(true);
+    try {
+      const { data } = await iaAPI.classify(text.trim(), useLlm);
+      setResult(data);
+    } catch {
+      setResult({ categorie: 'Erreur', confiance: 0 });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confPct = result ? (result.confiance * 100).toFixed(0) : 0;
+  const confColor = result?.confiance > 0.7 ? 'text-emerald-600' : result?.confiance > 0.4 ? 'text-orange-500' : 'text-red-500';
+
+  return (
+    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+      <div className="flex items-center gap-2 mb-4">
+        <i className="fi fi-rr-tags text-base text-primary" />
+        <h2 className="font-semibold text-foreground">Classifier une cause de panne</h2>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Décrivez un symptôme ou une cause de panne. L'IA classifie automatiquement la catégorie (Mécanique, Électrique, Hydraulique…).
+      </p>
+      <div className="flex gap-2 items-end flex-wrap">
+        <div className="flex-1 min-w-[200px]">
+          <label className="label">Symptôme ou cause</label>
+          <input className="input" placeholder="Ex: Fuite d'huile sur le vérin, Bruit anormal moteur, Capteur défectueux..."
+            value={text} onChange={e => setText(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleClassify()} />
+        </div>
+        <div className="flex items-center gap-2 pb-0.5">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+            <input type="checkbox" checked={useLlm} onChange={e => setUseLlm(e.target.checked)} />
+            LLM
+          </label>
+          <button className="btn-primary text-sm" onClick={handleClassify} disabled={loading || !text.trim()}>
+            {loading ? '...' : 'Classifier'}
+          </button>
+        </div>
+      </div>
+      {result && (
+        <div className="mt-3 flex items-center gap-3 text-sm">
+          <span className="font-semibold text-foreground">{result.categorie}</span>
+          <span className={`font-bold ${confColor}`}>{confPct}%</span>
+          <span className="text-[10px] text-muted-foreground">mode: {result.mode}</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ChatBotFloating() {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef(null);
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  const send = async () => {
+    if (!input.trim()) return;
+    const userMsg = input.trim();
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setLoading(true);
+    const history = messages.map(m => ({ role: m.role, content: m.content }));
+    const msgIdx = messages.length + 1;
+    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+    let full = '';
+    iaAPI.botChatStream(userMsg, history,
+      (token) => {
+        full += token;
+        setMessages(prev => prev.map((m, i) => i === msgIdx ? { ...m, content: full } : m));
+      },
+      () => {
+        setLoading(false);
+      },
+      (err) => {
+        setMessages(prev => prev.map((m, i) => i === msgIdx ? { ...m, content: err } : m));
+        setLoading(false);
+      },
+    );
+  };
+
+  return (
+    <>
+      <button onClick={() => setOpen(true)}
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl hover:opacity-90 transition-all"
+        style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))' }}>
+        <i className="fi fi-rr-comment text-xl" />
+      </button>
+
+      {open && (
+        <div className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-card shadow-2xl flex flex-col"
+          style={{ maxHeight: 'min(600px, 80vh)', animation: 'slideUp .25s ease-out' }}>
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <i className="fi fi-rr-brain-circuit text-primary text-sm" />
+              <span className="font-semibold text-sm">Assistant Maintenance</span>
+            </div>
+            <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-muted transition-colors">
+              <i className="fi fi-rr-cross text-sm text-muted-foreground" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ minHeight: 0 }}>
+            {messages.length === 0 && (
+              <div className="text-xs text-muted-foreground text-center py-6">
+                Posez une question sur les équipements, pannes, ou prédictions.
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${
+                  m.role === 'user'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-foreground'
+                }`}>
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {loading && messages[messages.length - 1]?.role === 'user' && (
+              <div className="flex justify-start">
+                <div className="bg-muted rounded-xl px-3 py-2 text-sm text-muted-foreground italic">
+                  Réflexion...
+                </div>
+              </div>
+            )}
+            <div ref={bottomRef} />
+          </div>
+          <div className="flex gap-2 p-3 border-t border-border">
+            <input className="input flex-1 text-sm" placeholder="Votre question..."
+              value={input} onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && send()} disabled={loading} />
+            <button className="btn-primary px-3" onClick={send} disabled={loading || !input.trim()}>
+              <i className="fi fi-rr-paper-plane text-sm" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function MiniDashboardCorrectives() {
@@ -590,7 +743,11 @@ export default function EquipementsPage() {
         ))
       )}
 
+      <ClassifyWidget />
+
       <MiniDashboardCorrectives />
+
+      <ChatBotFloating />
     </div>
   );
 }
