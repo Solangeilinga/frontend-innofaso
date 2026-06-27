@@ -111,7 +111,7 @@ function ModalMouvement({ piece, type, onClose, onDone }) {
       <div className="modal max-w-sm p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-bold text-lg">
-            {type === 'ENTREE' ? '📦 Entrée stock' : '📤 Sortie stock'}
+            {type === 'ENTREE' ? 'Entrée stock' : 'Sortie stock'}
           </h3>
           <button onClick={onClose}><X size={18} className="text-gray-400"/></button>
         </div>

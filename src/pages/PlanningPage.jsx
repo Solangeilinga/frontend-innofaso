@@ -391,7 +391,7 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
   }, {}) || {};
 
   const renderVal = (v) => {
-    if (v.valeur_booleen !== null && v.valeur_booleen !== undefined) return v.valeur_booleen ? 'Oui ✓' : 'Non ✗';
+    if (v.valeur_booleen !== null && v.valeur_booleen !== undefined) return v.valeur_booleen ? 'Oui' : 'Non';
     if (v.valeur_nombre !== null && v.valeur_nombre !== undefined) return `${v.valeur_nombre}${v.unite ? ' ' + v.unite : ''}`;
     if (v.valeur_date)  return new Date(v.valeur_date).toLocaleDateString('fr-FR');
     if (v.valeur_texte) return v.valeur_texte;
@@ -468,7 +468,7 @@ function ActionModal({ title, tache, onClose, onConfirm, confirmLabel, confirmIc
                                 className="input text-xs w-full cursor-pointer"
                                 style={{ borderColor: '#1d4ed8', fontSize: 12 }}
                               >
-                                <option value="">✍️ — Signer ici —</option>
+                                <option value="">— Signer ici —</option>
                                 {['ADMIN','RESP_MAINT','RESP_PROD','TECHNICIEN','OPERATEUR'].map(role => {
                                   const g = signataires.filter(s => s.role === role);
                                   if (!g.length) return null;

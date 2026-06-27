@@ -9,13 +9,13 @@ import { ArrowLeft, Plus, Trash2, Edit2, GripVertical, Save, ChevronDown, Eye, E
 const TYPES_CHAMPS = [
   { value:'TEXTE',     label:'Texte',            emoji:'Aa' },
   { value:'NOMBRE',    label:'Nombre',           emoji:'#' },
-  { value:'DATE',      label:'Date (auto)',       emoji:'📅' },
-  { value:'HEURE',     label:'Heure (auto)',      emoji:'🕐' },
-  { value:'BOOLEEN',   label:'Oui / Non',         emoji:'☑️' },
+  { value:'DATE',      label:'Date (auto)',       icon:'calendar' },
+  { value:'HEURE',     label:'Heure (auto)',      icon:'clock' },
+  { value:'BOOLEEN',   label:'Oui / Non',         icon:'check' },
   { value:'LISTE',     label:'Liste déroulante',  emoji:'▼' },
-  { value:'SIGNATURE', label:'Signature',         emoji:'✍️' },
-  { value:'CALCULE',   label:'Calculé',           emoji:'⚡' },
-  { value:'PHOTO',     label:'Photo',             emoji:'📷' },
+  { value:'SIGNATURE', label:'Signature',         icon:'pen' },
+  { value:'CALCULE',   label:'Calculé',           icon:'zap' },
+  { value:'PHOTO',     label:'Photo',             icon:'camera' },
 ];
 
 function ChampForm({ champ = {}, onSave, onCancel, sectionsList }) {

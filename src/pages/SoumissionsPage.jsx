@@ -48,8 +48,8 @@ function ModalValider({ soumission, onClose, onDone }) {
           <div className="relative">
             <select value={statut} onChange={e => setStatut(e.target.value)}
               className="input appearance-none pr-10 cursor-pointer">
-              <option value="VALIDE">✅ Valider</option>
-              <option value="REJETE">❌ Rejeter</option>
+              <option value="VALIDE">Valider</option>
+              <option value="REJETE">Rejeter</option>
             </select>
             <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"/>
           </div>

@@ -209,7 +209,7 @@ export default function PlannificationCorrective() {
                           disabled={!canEdit}
                         >
                           <option value="">—</option>
-                          <option value="__libre__">✏️ Saisie libre</option>
+                          <option value="__libre__">Saisie libre</option>
                           {eqLignes.filter(eq => eq.type === 'equipement').map(eq => (
                             <option key={eq.id} value={eq.id}>{eq.nom}</option>
                           ))}

@@ -90,7 +90,7 @@ function ChampInput({ champ, value, onChange, signataires = [] }) {
                 </optgroup>
               );
             })}
-            <option value="__libre__">✏️ Saisir manuellement…</option>
+            <option value="__libre__">Saisir manuellement</option>
           </select>
           <UserCheck size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-primary pointer-events-none"/>
         </div>
@@ -215,7 +215,7 @@ function ChampInput({ champ, value, onChange, signataires = [] }) {
                 </optgroup>
               );
             })}
-            <option value="__libre__">✏️ Saisir manuellement…</option>
+            <option value="__libre__">Saisir manuellement</option>
           </select>
           <UserCheck size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-primary pointer-events-none"/>
         </div>
@@ -250,7 +250,7 @@ function ChampInput({ champ, value, onChange, signataires = [] }) {
       <div>
         {labelEl}
         <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">
-          📷 Fonctionnalité photo disponible sur mobile
+          Fonctionnalité photo disponible sur mobile
         </div>
       </div>
     );
