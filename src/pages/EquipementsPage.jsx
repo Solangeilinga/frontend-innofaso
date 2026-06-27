@@ -88,11 +88,43 @@ function usePredictions() {
   return { preds: preds || [], loading };
 }
 
-function trouver(preds, nom) {
-  if (!preds?.length || !nom) return null;
-  const n = nom.toLowerCase().trim();
-  return preds.find(p => p.equipement?.toLowerCase().trim() === n) ||
-    preds.find(p => n.includes(p.equipement?.toLowerCase().trim())) || null;
+// Normalise : retire accents, apostrophes, tirets, espaces doubles
+function normalise(s) {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[''`]/g, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function trouver(preds, nom, equipementId) {
+  if (!preds?.length) return null;
+  // 1. Match par equipement_id (le plus fiable - ajouté par le backend)
+  if (equipementId) {
+    const byId = preds.find(p => p.equipement_id === equipementId);
+    if (byId) return byId;
+  }
+  // 2. Match par nom_bdd (nom exact depuis la BDD)
+  if (nom) {
+    const byNomBdd = preds.find(p => p.equipement_nom_bdd === nom);
+    if (byNomBdd) return byNomBdd;
+  }
+  if (!nom) return null;
+  // 3. Fallback : matching normalisé
+  const n = normalise(nom);
+  const exact = preds.find(p => normalise(p.equipement) === n);
+  if (exact) return exact;
+  const partial1 = preds.find(p => n.includes(normalise(p.equipement)));
+  if (partial1) return partial1;
+  const partial2 = preds.find(p => normalise(p.equipement).includes(n));
+  if (partial2) return partial2;
+  const words = n.split(' ').filter(w => w.length > 3);
+  return preds.find(p => {
+    const pw = normalise(p.equipement).split(' ').filter(w => w.length > 3);
+    return words.filter(w => pw.includes(w)).length >= Math.min(2, words.length);
+  }) || null;
 }
 
 function ClassifyWidget() {
@@ -477,7 +509,7 @@ function EquipementDetailModal({ equipement, onClose, onUpdated }) {
 
 function CarteEquipement({ e, onViewDetail, onDelete, onEtatChange }) {
   const { preds, loading } = usePredictions();
-  const pred = trouver(preds, e.nom);
+  const pred = trouver(preds, e.nom, e.id);
   const peut = useAuth().peutGerer?.();
   const [showHistorique, setShowHistorique] = useState(false);
   const [historique, setHistorique]         = useState([]);
