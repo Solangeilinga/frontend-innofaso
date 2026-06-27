@@ -5,7 +5,7 @@ import {
   Users, LogOut, History, Layers, X, ChevronRight, Package, AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '../../store/auth';
-import { signatairesAPI, planningAPI } from '../../services/api';
+import { signatairesAPI, planningAPI, alertesAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 
 const nav = [
@@ -28,7 +28,20 @@ export default function Sidebar({ compact = false, onClose }) {
   const { user, logout, isAdmin, moduleScope } = useAuth();
   const [showSignal, setShowSignal] = useState(false);
   const [users, setUsers] = useState([]);
+  const [alertesCount, setAlertesCount] = useState(0);
   const [signalForm, setSignalForm] = useState({ signale_par_id: user?.id || '', assigne_a_id: '', observation: '' });
+
+  // Charger le nombre d'alertes non lues
+  useEffect(() => {
+    const fetchCount = () => {
+      alertesAPI.countNonLues()
+        .then(r => setAlertesCount(r.data?.count || r.data || 0))
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60000); // refresh toutes les minutes
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (showSignal) {
@@ -115,7 +128,14 @@ export default function Sidebar({ compact = false, onClose }) {
             className={({ isActive }) => itemClass(isActive)}
           >
             <Icon size={18} className="flex-shrink-0" />
-            {!compact && <span className="truncate">{label}</span>}
+            {!compact && <span className="truncate flex-1">{label}</span>}
+            {to === '/alertes' && alertesCount > 0 && (
+              <span className={`flex-shrink-0 flex items-center justify-center rounded-full text-white text-[10px] font-bold leading-none
+                ${alertesCount > 99 ? 'px-1.5 py-0.5' : 'w-5 h-5'}
+                bg-red-500`}>
+                {alertesCount > 99 ? '99+' : alertesCount}
+              </span>
+            )}
           </NavLink>
         ))}
 
