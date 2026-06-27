@@ -1,753 +1,358 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { equipementsAPI, dashboardAPI, planningAPI, iaAPI } from '../services/api';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { alertesAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import toast from 'react-hot-toast';
 import {
-  LineChart, Line, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-} from 'recharts';
+  Bell, CheckCheck, Zap, Wrench, RefreshCw, FileWarning,
+  ChevronDown, Package, ArrowRight, CircleCheck, Filter, Clock,
+} from 'lucide-react';
+import { formatDistanceToNow, format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
-const ETAT_COLOR = {
-  OPERATIONNEL:   'badge-green',
-  EN_PANNE:       'badge-red',
-  EN_MAINTENANCE: 'badge-yellow',
+// ── Config types ─────────────────────────────────────────────────
+const TYPE_CFG = {
+  MAINTENANCE_PREVENTIVE: {
+    icon: Wrench, label: 'Maintenance préventive', severity: 'neutral',
+    lien: '/planning', lienLabel: 'Voir le planning',
+  },
+  FORMULAIRE_EN_RETARD: {
+    icon: FileWarning, label: 'Formulaire en retard', severity: 'warning',
+    lien: '/formulaires', lienLabel: 'Accéder aux formulaires',
+  },
+  PANNE_CRITIQUE: {
+    icon: Zap, label: 'Panne critique', severity: 'danger',
+    lien: '/equipements', lienLabel: 'Voir les équipements',
+  },
+  MAINTENANCE_CORRECTIVE: {
+    icon: Wrench, label: 'Maintenance corrective', severity: 'warning',
+    lien: '/plannification', lienLabel: 'Planifier',
+  },
+  STOCK_BAS: {
+    icon: Package, label: 'Stock pièces insuffisant', severity: 'warning',
+    lien: '/stock', lienLabel: 'Gérer le stock',
+  },
+  VALIDATION: {
+    icon: CircleCheck, label: 'Validation requise', severity: 'neutral',
+    lien: '/soumissions', lienLabel: 'Voir les soumissions',
+  },
 };
 
-const ETAT_OPTIONS = ['OPERATIONNEL', 'EN_PANNE', 'EN_MAINTENANCE'];
-
-const RISQUE = {
-  'ÉLEVÉ':  { color:'#ef4444', bg:'#fef2f2', text:'#991b1b', reco:'⚠️ Planifier une maintenance', track:'#fecaca' },
-  'MODÉRÉ': { color:'#f97316', bg:'#fff7ed', text:'#9a3412', reco:'👁 Surveiller de près',          track:'#fed7aa' },
-  'FAIBLE': { color:'#22c55e', bg:'#f0fdf4', text:'#166534', reco:'✅ Aucune action requise',       track:'#bbf7d0' },
+// ── Styles par sévérité ───────────────────────────────────────────
+const SEV = {
+  danger: {
+    card:   'bg-red-50 border-red-200',
+    icon:   'bg-red-600 text-white',
+    badge:  'bg-red-600 text-white text-xs',
+    label:  'text-red-700',
+    link:   'text-red-700 hover:text-red-900',
+    action: 'text-red-600 hover:text-red-800',
+    dot:    'bg-red-500',
+    meta:   'text-red-500',
+  },
+  warning: {
+    card:   'bg-amber-50 border-amber-200',
+    icon:   'bg-amber-500 text-white',
+    badge:  'bg-amber-500 text-white text-xs',
+    label:  'text-amber-700',
+    link:   'text-amber-700 hover:text-amber-900',
+    action: 'text-amber-600 hover:text-amber-800',
+    dot:    'bg-amber-400',
+    meta:   'text-amber-500',
+  },
+  neutral: {
+    card:   'bg-white border-gray-200',
+    icon:   'bg-gray-100 text-gray-500',
+    badge:  'bg-gray-100 text-gray-600 text-xs',
+    label:  'text-gray-600',
+    link:   'text-primary hover:underline',
+    action: 'text-primary hover:underline',
+    dot:    'bg-blue-500',
+    meta:   'text-gray-400',
+  },
 };
 
-function Gauge({ pct, risque }) {
-  const cfg = RISQUE[risque] || RISQUE['FAIBLE'];
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <svg width="96" height="56" viewBox="0 0 96 56" style={{ overflow:'visible' }}>
-        <path d="M 10 50 A 38 38 0 0 1 86 50" fill="none" stroke={cfg.track} strokeWidth="8" strokeLinecap="round" />
-        <path d="M 10 50 A 38 38 0 0 1 86 50" fill="none" stroke={cfg.color} strokeWidth="8"
-          strokeLinecap="round" strokeDasharray={`${(pct/100)*120} 120`}
-          className="transition-all duration-700 ease-out" />
-        <text x="48" y="46" textAnchor="middle" fontSize="15" fontWeight="800" fill={cfg.color}>{pct}%</text>
-      </svg>
-      <span className="rounded-full px-2.5 py-0.5 text-[11px] font-bold" style={{ background:cfg.bg, color:cfg.text }}>{risque}</span>
-      <span className="text-[11px] text-muted-foreground text-center">{cfg.reco}</span>
-    </div>
-  );
-}
+const TYPES = [
+  { value: '', label: 'Tous les types' },
+  ...Object.entries(TYPE_CFG).map(([v, c]) => ({ value: v, label: c.label })),
+];
 
-function CustomTooltip({ active, payload, label, formatter }) {
-  if (!active || !payload?.length) return null;
+const MODULES = [
+  { value: '', label: 'Tous les modules' },
+  { value: 'MAINTENANCE', label: 'Maintenance' },
+  { value: 'PRODUCTION',  label: 'Production'  },
+];
+
+// ── Carte alerte ─────────────────────────────────────────────────
+function AlerteCard({ a, onLue, onTraitee, canTraiter }) {
+  const cfg  = TYPE_CFG[a.type_alerte] || { icon: Bell, label: a.type_alerte, severity: 'neutral' };
+  const sev  = SEV[cfg.severity] || SEV.neutral;
+  const Icon = cfg.icon;
+  const isNonLue = a.statut === 'NON_LUE';
+  const isLue    = a.statut === 'LUE';
+
   return (
-    <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-xl">
-      <p className="text-xs font-semibold text-muted-foreground mb-2">{label}</p>
-      {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2 text-sm">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: p.color }} />
-          <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-semibold">{formatter ? formatter(p.value) : p.value}</span>
+    <div className={`relative rounded-xl border p-4 transition-opacity ${sev.card} ${!isNonLue ? 'opacity-60' : ''}`}>
+      <div className="flex items-start gap-3">
+
+        {/* Icône */}
+        <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${sev.icon}`}>
+          <Icon size={15} aria-hidden="true"/>
         </div>
-      ))}
+
+        {/* Corps */}
+        <div className="min-w-0 flex-1 space-y-1.5">
+
+          {/* Ligne 1 : badge + module + temps */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center rounded px-2 py-0.5 font-medium ${sev.badge}`}>
+              {cfg.label}
+            </span>
+            {a.module && (
+              <span className={`text-xs font-medium ${sev.label}`}>
+                {a.module === 'MAINTENANCE' ? 'Maintenance' : 'Production'}
+              </span>
+            )}
+            <span className="ml-auto text-xs text-gray-400">
+              {formatDistanceToNow(new Date(a.date_creation), { addSuffix: true, locale: fr })}
+            </span>
+          </div>
+
+          {/* Message */}
+          <p className="text-sm leading-relaxed text-gray-800">{a.message}</p>
+
+          {/* Contexte */}
+          {(a.equipement_nom || a.formulaire_titre) && (
+            <p className={`text-xs ${sev.meta}`}>
+              {[a.equipement_nom, a.formulaire_titre].filter(Boolean).join(' · ')}
+            </p>
+          )}
+
+          {/* Actions */}
+          <div className="flex flex-wrap items-center gap-4 pt-0.5">
+            {cfg.lien && (
+              <Link to={cfg.lien}
+                className={`flex items-center gap-1 text-xs font-medium transition-colors ${sev.link}`}>
+                {cfg.lienLabel}
+                <ArrowRight size={11}/>
+              </Link>
+            )}
+            {isNonLue && (
+              <button onClick={() => onLue(a.id)}
+                className={`text-xs transition-colors ${sev.action}`}>
+                Marquer comme lu
+              </button>
+            )}
+            {isLue && canTraiter && (
+              <button onClick={() => onTraitee(a.id)}
+                className="flex items-center gap-1 text-xs font-medium text-green-600 hover:text-green-800 transition-colors">
+                <CircleCheck size={11}/>
+                Marquer traité
+              </button>
+            )}
+            <span className="ml-auto text-xs text-gray-300">
+              {format(new Date(a.date_creation), 'dd/MM/yyyy HH:mm', { locale: fr })}
+            </span>
+          </div>
+        </div>
+
+        {/* Dot non lue */}
+        {isNonLue && (
+          <span className={`mt-1 h-2 w-2 flex-shrink-0 rounded-full ${sev.dot}`}/>
+        )}
+      </div>
     </div>
   );
 }
 
-function EqKpi({ label, value, sub, icon }) {
+// ── Page ─────────────────────────────────────────────────────────
+export default function AlertesPage() {
+  const { peutValider, moduleScope } = useAuth();
+  const canTraiter = peutValider();
+
+  const [alertes, setAlertes]           = useState([]);
+  const [total, setTotal]               = useState(0);
+  const [loading, setLoading]           = useState(true);
+  const [syncing, setSyncing]           = useState(false);
+  const [filtre, setFiltre]             = useState('NON_LUE');
+  const [typeFiltre, setTypeFiltre]     = useState('');
+  const [moduleFiltre, setModuleFiltre] = useState(moduleScope || '');
+  const [page, setPage]                 = useState(1);
+  const LIMIT = 20;
+
+  const load = () => {
+    setLoading(true);
+    alertesAPI.lister({
+      statut:      filtre       || undefined,
+      type_alerte: typeFiltre   || undefined,
+      module:      moduleFiltre || undefined,
+      page, limit: LIMIT,
+    })
+      .then(r => { setAlertes(r.data?.data || r.data || []); setTotal(r.data?.total || 0); })
+      .catch(() => toast.error('Erreur de chargement'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, [filtre, typeFiltre, moduleFiltre, page]);
+
+  const refresh = () => { setSyncing(true); load(); setSyncing(false); toast.success('Alertes actualisées'); };
+
+  const marquerLue = async (id) => {
+    try { await alertesAPI.marquerLue(id); setAlertes(p => p.map(a => a.id === id ? { ...a, statut: 'LUE' } : a)); }
+    catch { toast.error('Erreur'); }
+  };
+
+  const marquerTraitee = async (id) => {
+    try {
+      await alertesAPI.marquerTraitee(id);
+      setAlertes(p => p.map(a => a.id === id ? { ...a, statut: 'TRAITEE' } : a));
+      toast.success('Alerte traitée');
+    } catch { toast.error('Erreur'); }
+  };
+
+  const toutesLues = async () => {
+    try {
+      await alertesAPI.toutesLues();
+      setAlertes(p => p.map(a => ({ ...a, statut: 'LUE' })));
+      toast.success('Toutes les alertes marquées comme lues');
+    } catch { toast.error('Erreur'); }
+  };
+
+  const nonLues = alertes.filter(a => a.statut === 'NON_LUE');
+  const counts  = {
+    critique: nonLues.filter(a => a.type_alerte === 'PANNE_CRITIQUE').length,
+    retard:   nonLues.filter(a => a.type_alerte === 'FORMULAIRE_EN_RETARD').length,
+    stock:    nonLues.filter(a => ['STOCK_BAS','STOCK_MP_BAS'].includes(a.type_alerte)).length,
+  };
+  const totalPages = Math.ceil(total / LIMIT);
+
   return (
-    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+    <div className="mx-auto max-w-3xl space-y-5">
+
+      {/* En-tête */}
       <div className="flex items-start justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-foreground tabular-nums">{value}</p>
-          {sub && <p className="mt-0.5 text-xs text-muted-foreground/80">{sub}</p>}
-        </div>
-        {icon && <i className={`fi fi-rr-${icon} text-lg text-muted-foreground`} />}
-      </div>
-    </div>
-  );
-}
-
-let _predsCache = null;
-let _predsPromise = null;
-
-function usePredictions() {
-  const [preds, setPreds] = useState(_predsCache);
-  const [loading, setLoading] = useState(!_predsCache);
-  useEffect(() => {
-    if (_predsCache) { setPreds(_predsCache); setLoading(false); return; }
-    if (!_predsPromise) {
-      const now = new Date();
-      _predsPromise = dashboardAPI.predictions({ mois: now.getMonth()+1, annee: now.getFullYear() })
-        .then(r => { _predsCache = r.data?.predictions || []; return _predsCache; })
-        .catch(() => { _predsCache = []; return []; });
-    }
-    _predsPromise.then(d => { setPreds(d); setLoading(false); });
-  }, []);
-  return { preds: preds || [], loading };
-}
-
-function trouver(preds, nom) {
-  if (!preds?.length || !nom) return null;
-  const n = nom.toLowerCase().trim();
-  return preds.find(p => p.equipement?.toLowerCase().trim() === n) ||
-    preds.find(p => n.includes(p.equipement?.toLowerCase().trim())) || null;
-}
-
-function ClassifyWidget() {
-  const [text, setText] = useState('');
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [useLlm, setUseLlm] = useState(false);
-
-  const handleClassify = async () => {
-    if (!text.trim()) return;
-    setLoading(true);
-    try {
-      const { data } = await iaAPI.classify(text.trim(), useLlm);
-      setResult(data);
-    } catch {
-      setResult({ categorie: 'Erreur', confiance: 0 });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const confPct = result ? (result.confiance * 100).toFixed(0) : 0;
-  const confColor = result?.confiance > 0.7 ? 'text-emerald-600' : result?.confiance > 0.4 ? 'text-orange-500' : 'text-red-500';
-
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <i className="fi fi-rr-tags text-base text-primary" />
-        <h2 className="font-semibold text-foreground">Classifier une cause de panne</h2>
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">
-        Décrivez un symptôme ou une cause de panne. L'IA classifie automatiquement la catégorie (Mécanique, Électrique, Hydraulique…).
-      </p>
-      <div className="flex gap-2 items-end flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <label className="label">Symptôme ou cause</label>
-          <input className="input" placeholder="Ex: Fuite d'huile sur le vérin, Bruit anormal moteur, Capteur défectueux..."
-            value={text} onChange={e => setText(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleClassify()} />
-        </div>
-        <div className="flex items-center gap-2 pb-0.5">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
-            <input type="checkbox" checked={useLlm} onChange={e => setUseLlm(e.target.checked)} />
-            LLM
-          </label>
-          <button className="btn-primary text-sm" onClick={handleClassify} disabled={loading || !text.trim()}>
-            {loading ? '...' : 'Classifier'}
-          </button>
-        </div>
-      </div>
-      {result && (
-        <div className="mt-3 flex items-center gap-3 text-sm">
-          <span className="font-semibold text-foreground">{result.categorie}</span>
-          <span className={`font-bold ${confColor}`}>{confPct}%</span>
-          <span className="text-[10px] text-muted-foreground">mode: {result.mode}</span>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function ChatBotFloating() {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
-  const bottomRef = useRef(null);
-
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  const send = async () => {
-    if (!input.trim()) return;
-    const userMsg = input.trim();
-    setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
-    setLoading(true);
-    const history = messages.map(m => ({ role: m.role, content: m.content }));
-    const msgIdx = messages.length + 1;
-    setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-    let full = '';
-    iaAPI.botChatStream(userMsg, history,
-      (token) => {
-        full += token;
-        setMessages(prev => prev.map((m, i) => i === msgIdx ? { ...m, content: full } : m));
-      },
-      () => {
-        setLoading(false);
-      },
-      (err) => {
-        setMessages(prev => prev.map((m, i) => i === msgIdx ? { ...m, content: err } : m));
-        setLoading(false);
-      },
-    );
-  };
-
-  return (
-    <>
-      <button onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-xl hover:opacity-90 transition-all"
-        style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))' }}>
-        <i className="fi fi-rr-comment text-xl" />
-      </button>
-
-      {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-card shadow-2xl flex flex-col"
-          style={{ maxHeight: 'min(600px, 80vh)', animation: 'slideUp .25s ease-out' }}>
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <div className="flex items-center gap-2">
-              <i className="fi fi-rr-brain-circuit text-primary text-sm" />
-              <span className="font-semibold text-sm">Assistant Maintenance</span>
-            </div>
-            <button onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-muted transition-colors">
-              <i className="fi fi-rr-cross text-sm text-muted-foreground" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2" style={{ minHeight: 0 }}>
-            {messages.length === 0 && (
-              <div className="text-xs text-muted-foreground text-center py-6">
-                Posez une question sur les équipements, pannes, ou prédictions.
-              </div>
-            )}
-            {messages.map((m, i) => (
-              <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm ${
-                  m.role === 'user'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-foreground'
-                }`}>
-                  {m.content}
-                </div>
-              </div>
-            ))}
-            {loading && messages[messages.length - 1]?.role === 'user' && (
-              <div className="flex justify-start">
-                <div className="bg-muted rounded-xl px-3 py-2 text-sm text-muted-foreground italic">
-                  Réflexion...
-                </div>
-              </div>
-            )}
-            <div ref={bottomRef} />
-          </div>
-          <div className="flex gap-2 p-3 border-t border-border">
-            <input className="input flex-1 text-sm" placeholder="Votre question..."
-              value={input} onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && send()} disabled={loading} />
-            <button className="btn-primary px-3" onClick={send} disabled={loading || !input.trim()}>
-              <i className="fi fi-rr-paper-plane text-sm" />
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-function MiniDashboardCorrectives() {
-  const [type, setType] = useState('mois');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 7) + '-01');
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    setLoading(true);
-    planningAPI.courbeCorrectivesEquipements({ type, date })
-      .then(r => setData(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setData([]))
-      .finally(() => setLoading(false));
-  }, [type, date]);
-
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <div>
-          <div className="flex items-center gap-2">
-            <i className="fi fi-rr-chart-connected text-base text-red-500" />
-            <h2 className="font-semibold text-foreground">Courbe des heures correctives par équipement</h2>
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">Évolution des arrêts correctifs — filtre jour / mois / année</p>
+          <h1 className="text-xl font-bold text-gray-900">Alertes</h1>
+          <p className="mt-0.5 text-sm text-gray-400">
+            {total} alerte{total > 1 ? 's' : ''} · {nonLues.length} non lue{nonLues.length > 1 ? 's' : ''}
+          </p>
         </div>
-        <div className="flex gap-2">
-          <div className="flex rounded-lg border border-border overflow-hidden">
-            {['jour', 'mois', 'annee'].map(t => (
-              <button key={t} type="button"
-                className={`px-3 py-1 text-xs font-medium ${type === t ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                onClick={() => setType(t)}
-              >{t === 'jour' ? 'Jour' : t === 'mois' ? 'Mois' : 'Année'}</button>
-            ))}
-          </div>
-          {type !== 'annee' ? (
-            <input type="month" value={date.slice(0, 7)}
-              onChange={e => setDate(e.target.value + '-01')}
-              className="input max-w-[140px] text-xs" />
-          ) : (
-            <input type="number" value={date.slice(0, 4)}
-              onChange={e => setDate(e.target.value + '-01-01')}
-              className="input max-w-[80px] text-xs" min="2020" max="2030" />
+        <div className="flex items-center gap-2">
+          {filtre === 'NON_LUE' && nonLues.length > 0 && (
+            <button onClick={toutesLues}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+              <CheckCheck size={13}/>
+              Tout marquer lu
+            </button>
           )}
+          <button onClick={refresh} disabled={syncing}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''}/>
+            Actualiser
+          </button>
         </div>
       </div>
-      {loading ? (
-        <div className="flex h-48 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
-      ) : data.length === 0 ? (
-        <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">
-          <div className="text-center">
-            <i className="fi fi-rr-chart-connected text-3xl mb-2 opacity-20 block" />
-            Aucune donnée corrective pour cette période.
-          </div>
-        </div>
-      ) : (
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data}>
-              <defs>
-                <linearGradient id="gradCorrEq" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#dc2626" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="equipement" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip content={<CustomTooltip formatter={v => `${Number(v).toFixed(1)} h`} />} />
-              <Legend />
-              <Area type="monotone" dataKey="heures" name="Heures correctives" stroke="#dc2626" strokeWidth={2} fill="url(#gradCorrEq)" dot={{ r: 4, fill: '#dc2626' }} />
-            </AreaChart>
-          </ResponsiveContainer>
+
+      {/* Compteurs critiques */}
+      {filtre === 'NON_LUE' && (counts.critique > 0 || counts.retard > 0 || counts.stock > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {counts.critique > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2">
+              <Zap size={13} className="text-red-600"/>
+              <span className="text-sm font-semibold text-red-700">
+                {counts.critique} panne{counts.critique > 1 ? 's' : ''} critique{counts.critique > 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+          {counts.retard > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2">
+              <Clock size={13} className="text-amber-600"/>
+              <span className="text-sm font-semibold text-amber-700">
+                {counts.retard} formulaire{counts.retard > 1 ? 's' : ''} en retard
+              </span>
+            </div>
+          )}
+          {counts.stock > 0 && (
+            <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2">
+              <Package size={13} className="text-amber-600"/>
+              <span className="text-sm font-semibold text-amber-700">
+                {counts.stock} alerte{counts.stock > 1 ? 's' : ''} de stock
+              </span>
+            </div>
+          )}
         </div>
       )}
-    </section>
-  );
-}
 
-function EquipementDetailModal({ equipement, onClose, onUpdated }) {
-  const [type, setType] = useState('mois');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 7) + '-01');
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [etat, setEtat] = useState(equipement.etat || '');
-
-  useEffect(() => {
-    if (!equipement?.id) return;
-    setLoading(true);
-    planningAPI.detailEquipementMaintenance(equipement.id, { type, date })
-      .then(r => setData(r.data || {}))
-      .catch(() => setData({ detail: [], observations_frequentes: [], temps_max: null }))
-      .finally(() => setLoading(false));
-  }, [equipement?.id, type, date]);
-
-  const isAnnee = type === 'annee';
-  const totalPrev = data?.detail?.reduce((s, r) => s + Number(r.heures_prev || 0), 0) || 0;
-  const totalCorr = data?.detail?.reduce((s, r) => s + Number(r.heures_corr || 0), 0) || 0;
-  const totalAll = totalPrev + totalCorr;
-  const pctPrev = totalAll > 0 ? (totalPrev / totalAll) * 100 : 0;
-  const pctCorr = totalAll > 0 ? (totalCorr / totalAll) * 100 : 0;
-
-  const handleEtatChange = async (newEtat) => {
-    try {
-      await equipementsAPI.updateEtat(equipement.id, { etat: newEtat });
-      setEtat(newEtat);
-      toast.success('État mis à jour');
-      if (onUpdated) onUpdated();
-    } catch { toast.error('Erreur mise à jour état'); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-border bg-card shadow-2xl"
-        onClick={e => e.stopPropagation()} style={{ animation:'slideUp .35s cubic-bezier(0.16,1,0.3,1)' }}>
-        <div className="border-b border-border px-6 py-5">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <i className="fi fi-rr-wrench-simple text-xl text-primary" />
-              <div>
-                <h2 className="text-xl font-bold text-foreground">{equipement.nom}</h2>
-                <p className="text-sm text-muted-foreground">{equipement.code_ref} · {equipement.ligne_production || equipement.localisation || ''}</p>
-              </div>
-            </div>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 hover:bg-muted transition-colors">
-              <i className="fi fi-rr-cross text-base" />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6 space-y-5">
-          <div className="flex flex-wrap gap-3">
-            <div className="flex rounded-lg border border-border overflow-hidden">
-              {['jour', 'mois', 'annee'].map(t => (
-                <button key={t} type="button"
-                  className={`px-4 py-1.5 text-sm font-medium ${type === t ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
-                  onClick={() => setType(t)}
-                >{t === 'jour' ? 'Jour' : t === 'mois' ? 'Mois' : 'Année'}</button>
-              ))}
-            </div>
-            {!isAnnee ? (
-              <input type="month" value={date.slice(0, 7)} onChange={e => setDate(e.target.value + '-01')} className="input max-w-[160px] text-sm" />
-            ) : (
-              <input type="number" value={date.slice(0, 4)} onChange={e => setDate(e.target.value + '-01-01')} className="input max-w-[100px] text-sm" min="2020" max="2030" />
-            )}
-          </div>
-
-          {loading ? (
-            <div className="flex h-40 items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-3 gap-3">
-                <EqKpi label="Préventif" value={`${totalPrev.toFixed(1)}h`} sub={`${pctPrev.toFixed(0)}% du total`} icon="check-circle" />
-                <EqKpi label="Correctif" value={`${totalCorr.toFixed(1)}h`} sub={`${pctCorr.toFixed(0)}% du total`} icon="triangle-warning" />
-                <EqKpi label="Total" value={`${totalAll.toFixed(1)}h`} sub={`${data?.detail?.length || 0} période(s)`} icon="clock" />
-              </div>
-
-              {totalAll > 0 && (
-                <div className="rounded-xl border border-border bg-card p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Répartition</p>
-                  <div className="h-3 w-full flex overflow-hidden rounded-full bg-muted">
-                    <div className="h-full bg-emerald-500 transition-all" style={{ width:`${pctPrev}%` }} />
-                    <div className="h-full bg-red-500 transition-all" style={{ width:`${pctCorr}%` }} />
-                  </div>
-                  <div className="flex justify-between mt-1.5 text-[11px]">
-                    <span className="text-emerald-600 font-medium">Préventif {pctPrev.toFixed(0)}%</span>
-                    <span className="text-red-600 font-medium">Correctif {pctCorr.toFixed(0)}%</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="rounded-xl border border-border bg-card p-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-                    <i className="fi fi-rr-analyse text-sm" /> Observations fréquentes
-                  </h3>
-                  {data?.observations_frequentes?.length > 0 ? (
-                    <ul className="space-y-1.5">
-                      {data.observations_frequentes.map((obs, i) => (
-                        <li key={i} className="flex items-start gap-2 text-sm">
-                          <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                          <span>{obs.texte} <span className="text-muted-foreground">({obs.nb}x)</span></span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : <p className="text-sm text-muted-foreground">Aucune observation</p>}
-                </div>
-                <div className="rounded-xl border border-border bg-card p-4">
-                  <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-                    <i className="fi fi-rr-clock text-sm" /> Temps le plus élevé
-                  </h3>
-                  {data?.temps_max ? (
-                    <div>
-                      <p className="text-lg font-bold">{Number(data.temps_max.duree_max).toFixed(1)}h</p>
-                      <p className="text-xs text-muted-foreground">Type: {data.temps_max.type}</p>
-                    </div>
-                  ) : <p className="text-sm text-muted-foreground">—</p>}
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-border bg-card p-4">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-                  <i className="fi fi-rr-settings text-sm" /> Changer l'état
-                </h3>
-                <div className="flex gap-2 flex-wrap">
-                  {ETAT_OPTIONS.map(opt => (
-                    <button key={opt} type="button"
-                      className={`px-4 py-1.5 text-xs font-medium rounded-lg border transition-all ${
-                        etat === opt
-                          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                          : 'border-border hover:bg-muted'
-                      }`}
-                      onClick={() => handleEtatChange(opt)}
-                    >{opt.replace(/_/g, ' ')}</button>
-                  ))}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CarteEquipement({ e, onViewDetail, onDelete, onEtatChange }) {
-  const { preds, loading } = usePredictions();
-  const pred = trouver(preds, e.nom);
-  const peut = useAuth().peutGerer?.();
-  const [showHistorique, setShowHistorique] = useState(false);
-  const [historique, setHistorique]         = useState([]);
-  const [loadingHist, setLoadingHist]       = useState(false);
-
-  const openHistorique = async () => {
-    setShowHistorique(true);
-    if (historique.length > 0) return;
-    setLoadingHist(true);
-    try {
-      const { data } = await equipementsAPI.historique(e.id);
-      setHistorique(Array.isArray(data) ? data : []);
-    } catch { toast.error('Erreur historique'); }
-    finally { setLoadingHist(false); }
-  };
-
-  return (
-    <>
-    {showHistorique && (
-      <div className="modal-overlay">
-        <div className="modal max-w-lg p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-lg">Historique — {e.nom}</h3>
-            <button onClick={() => setShowHistorique(false)}><i className="fi fi-rr-cross text-muted-foreground text-lg" /></button>
-          </div>
-          <p className="text-xs text-muted-foreground font-mono">{e.code_ref}</p>
-          {loadingHist ? (
-            <div className="flex justify-center py-8">
-              <div className="w-7 h-7 border-4 border-primary border-t-transparent rounded-full animate-spin"/>
-            </div>
-          ) : historique.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8 text-sm">Aucun historique disponible</p>
-          ) : (
-            <div className="space-y-2 max-h-80 overflow-y-auto">
-              {historique.map((h, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-muted/30 rounded-xl text-sm">
-                  <span className={`flex-shrink-0 text-xs font-bold px-2 py-0.5 rounded ${
-                    h.etat === 'EN_PANNE' ? 'bg-red-500/20 text-red-400' :
-                    h.etat === 'EN_MAINTENANCE' ? 'bg-amber-500/20 text-amber-400' :
-                    'bg-green-500/20 text-green-400'
-                  }`}>{h.etat?.replace(/_/g,' ') || 'Action'}</span>
-                  <div className="flex-1 min-w-0">
-                    {h.action && <p className="text-xs font-medium text-foreground">{h.action}</p>}
-                    {h.message && <p className="text-xs text-muted-foreground">{h.message}</p>}
-                    {(h.utilisateur_nom || h.user_nom) && (
-                      <p className="text-xs text-muted-foreground">
-                        {h.utilisateur_prenom || h.user_prenom} {h.utilisateur_nom || h.user_nom}
-                      </p>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground flex-shrink-0">
-                    {h.date ? new Date(h.date).toLocaleDateString('fr-FR') :
-                     h.timestamp ? new Date(h.timestamp).toLocaleDateString('fr-FR') : '—'}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    )}
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md">
-      <div className="flex items-start gap-3 mb-3">
-        <i className="fi fi-rr-wrench-simple text-xl text-primary" />
-        <div className="min-w-0 flex-1">
-          <p className="font-mono text-[11px] text-primary font-medium">{e.code_ref}</p>
-          <p className="font-semibold text-sm text-foreground leading-tight">{e.nom}</p>
-        </div>
-        <div className="flex gap-1 shrink-0">
-          <button type="button" onClick={() => onViewDetail(e)}
-            className="rounded-lg border border-border px-2.5 py-1 text-[11px] font-medium hover:bg-muted transition-colors"
-          >Détails</button>
-          {peut && (
-            <button type="button" onClick={() => onDelete(e)}
-              className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 transition-colors"
-              title="Supprimer"
-            ><i className="fi fi-rr-trash text-sm" /></button>
-          )}
-        </div>
-      </div>
-
-      <div className="text-xs text-muted-foreground space-y-1 mb-3">
-        {e.type_equipement && <span>Type : <b className="text-foreground">{e.type_equipement}</b></span>}
-        {e.localisation && <span className="flex items-center gap-1"><i className="fi fi-rr-marker text-xs" />{e.localisation}</span>}
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <span className={`inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-full ${ETAT_COLOR[e.etat] || 'badge-gray'}`}>
-          {e.etat?.replace(/_/g,' ')}
-        </span>
-        {peut && (
-          <div className="flex gap-1">
-            {ETAT_OPTIONS.filter(o => o !== e.etat).slice(0, 2).map(opt => (
-              <button key={opt} type="button" onClick={() => onEtatChange(e.id, opt)}
-                className="text-[10px] px-1.5 py-0.5 rounded border border-border hover:bg-muted text-muted-foreground transition-colors"
-              >{opt === 'EN_PANNE' ? 'Panne' : opt === 'OPERATIONNEL' ? 'Op.' : 'Maint.'}</button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <button onClick={openHistorique}
-        className="text-xs text-primary hover:underline mb-3 flex items-center gap-1 transition-colors"
-        style={{ background:'none', border:'none', padding:0, cursor:'pointer' }}
-      ><i className="fi fi-rr-clock text-xs" /> Voir l'historique</button>
-
-      <div className="border-t border-border pt-3 mt-auto">
-        <div className="flex items-center gap-1.5 mb-2">
-          <i className="fi fi-rr-brain-circuit text-xs text-primary" />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Prédiction IA — Juillet
-          </span>
-        </div>
-        {loading && (
-          <div className="flex items-center gap-2 py-2">
-            <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <span className="text-xs text-muted-foreground">Calcul en cours…</span>
-          </div>
-        )}
-        {!loading && !pred && (
-          <p className="text-[11px] text-muted-foreground/60 italic">Non couvert par le modèle IA</p>
-        )}
-        {!loading && pred && <Gauge pct={pred.probabilite_pct} risque={pred.risque} />}
-      </div>
-    </div>
-    </>
-  );
-}
-
-function Modal({ onClose, onCreated }) {
-  const [f, setF] = useState({ code_ref:'', nom:'', type_equipement:'', localisation:'', ligne_production:'' });
-  const [l, setL] = useState(false);
-  const sub = async e => {
-    e.preventDefault();
-    if (!f.code_ref || !f.nom) return toast.error('Code et nom requis');
-    setL(true);
-    try { await equipementsAPI.creer(f); toast.success('Équipement créé !'); onCreated(); }
-    catch(err) { toast.error(err.response?.data?.message || err.response?.data?.error || 'Erreur'); }
-    finally { setL(false); }
-  };
-  return (
-    <div className="modal-overlay">
-      <div className="modal max-w-md p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold">Nouvel équipement</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-muted"><i className="fi fi-rr-cross text-muted-foreground text-lg" /></button>
-        </div>
-        <form onSubmit={sub} className="space-y-3">
-          {[
-            ['code_ref','Code référence *','ex: BROYEUR-01'],
-            ['nom','Nom *',"Nom de l'équipement"],
-            ['type_equipement','Type','Broyeur, Pompe…'],
-            ['localisation','Localisation','Salle de production'],
-            ['ligne_production','Ligne de production','Ligne 1'],
-          ].map(([k,lbl,ph]) => (
-            <div key={k}>
-              <label className="label">{lbl}</label>
-              <input value={f[k]} onChange={e => setF(p=>({...p,[k]:e.target.value}))} placeholder={ph} className="input"/>
-            </div>
-          ))}
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
-            <button type="submit" disabled={l} className="btn-primary flex-1">{l?'Création…':'Créer'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export default function EquipementsPage() {
-  const { peutGerer } = useAuth();
-  const [items, setItems] = useState([]);
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState(false);
-  const [detailEq, setDetailEq] = useState(null);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    equipementsAPI.lister({ search: search || undefined })
-      .then(r => setItems(r.data?.data || (Array.isArray(r.data) ? r.data : [])))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [search]);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleDelete = async (e) => {
-    if (!window.confirm(`Supprimer ${e.nom} (${e.code_ref}) ?`)) return;
-    try {
-      await equipementsAPI.supprimer(e.id);
-      toast.success('Équipement supprimé');
-      load();
-    } catch { toast.error('Erreur suppression'); }
-  };
-
-  const handleEtatChange = async (id, etat) => {
-    try {
-      await equipementsAPI.updateEtat(id, { etat });
-      toast.success('État mis à jour');
-      load();
-    } catch { toast.error('Erreur mise à jour état'); }
-  };
-
-  const groupes = items.reduce((acc, e) => {
-    const ligne = e.ligne_production || 'Sans ligne';
-    if (!acc[ligne]) acc[ligne] = [];
-    acc[ligne].push(e);
-    return acc;
-  }, {});
-
-  return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      {modal && <Modal onClose={()=>setModal(false)} onCreated={()=>{setModal(false);load();}}/>}
-      {detailEq && <EquipementDetailModal equipement={detailEq} onClose={() => setDetailEq(null)} onUpdated={load} />}
-
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <div className="flex items-center gap-3">
-          <i className="fi fi-rr-wrench-simple text-2xl text-primary" />
-          <div>
-            <h1 className="text-2xl font-bold text-foreground md:text-3xl">Équipements</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Gestion et suivi des équipements de production</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="card flex gap-3 p-4">
-        <div className="relative flex-1">
-          <i className="fi fi-rr-search absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground" />
-          <input placeholder="Rechercher un équipement…" value={search}
-            onChange={e=>setSearch(e.target.value)} className="input pl-9"/>
-        </div>
-        {peutGerer?.() && (
-          <button onClick={()=>setModal(true)} className="btn-primary flex items-center gap-2 shrink-0">
-            <i className="fi fi-rr-plus text-sm" /> Ajouter
+      {/* Filtres */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter size={13} className="text-gray-400 flex-shrink-0"/>
+        {[
+          { v: 'NON_LUE', l: 'Non lues' },
+          { v: 'LUE',     l: 'Lues'     },
+          { v: 'TRAITEE', l: 'Traitées' },
+          { v: '',        l: 'Toutes'   },
+        ].map(({ v, l }) => (
+          <button key={v} onClick={() => { setFiltre(v); setPage(1); }}
+            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+              filtre === v
+                ? 'bg-gray-900 text-white'
+                : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+            }`}>
+            {l}
           </button>
-        )}
+        ))}
+
+        <div className="relative ml-auto">
+          <select value={moduleFiltre} onChange={e => { setModuleFiltre(e.target.value); setPage(1); }}
+            disabled={!!moduleScope}
+            className="appearance-none rounded-md border border-gray-200 bg-white py-1 pl-3 pr-7 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-300 cursor-pointer">
+            {MODULES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+          <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"/>
+        </div>
+
+        <div className="relative">
+          <select value={typeFiltre} onChange={e => { setTypeFiltre(e.target.value); setPage(1); }}
+            className="appearance-none rounded-md border border-gray-200 bg-white py-1 pl-3 pr-7 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-300 cursor-pointer">
+            {TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <ChevronDown size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-400"/>
+        </div>
       </div>
 
+      {/* Liste */}
       {loading ? (
         <div className="flex justify-center py-20">
-          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"/>
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-600"/>
         </div>
-      ) : items.length === 0 ? (
-        <div className="card text-center py-16 text-muted-foreground">
-          <i className="fi fi-rr-wrench-simple text-4xl mb-3 opacity-30 block" />
-          <p className="font-medium">Aucun équipement trouvé</p>
+      ) : alertes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 py-20">
+          <Bell size={28} className="mb-3 text-gray-300"/>
+          <p className="text-sm text-gray-400">Aucune alerte pour ce filtre</p>
         </div>
       ) : (
-        Object.entries(groupes).map(([ligne, groupe]) => (
-          <div key={ligne} className="space-y-3">
-            <h3 className="flex items-center gap-2 font-semibold">
-              <span className="rounded-lg bg-primary/10 px-2.5 py-0.5 text-sm text-primary">{ligne}</span>
-              <span className="text-xs font-normal text-muted-foreground">
-                {groupe.length} équipement{groupe.length>1?'s':''}
-              </span>
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              {groupe.map(e => <CarteEquipement key={e.id} e={e} onViewDetail={setDetailEq} onDelete={handleDelete} onEtatChange={handleEtatChange} />)}
-            </div>
-          </div>
-        ))
+        <div className="space-y-2">
+          {alertes.map(a => (
+            <AlerteCard key={a.id} a={a} canTraiter={canTraiter}
+              onLue={marquerLue} onTraitee={marquerTraitee}/>
+          ))}
+        </div>
       )}
 
-      <ClassifyWidget />
-
-      <MiniDashboardCorrectives />
-
-      <ChatBotFloating />
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+            Précédent
+          </button>
+          <span className="text-xs text-gray-400">{page} / {totalPages}</span>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+            Suivant
+          </button>
+        </div>
+      )}
     </div>
   );
 }
