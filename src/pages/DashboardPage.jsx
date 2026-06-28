@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { dashboardAPI, soumissionsAPI } from '../services/api';
+import { dashboardAPI, soumissionsAPI, stockAPI, planningAPI, alertesAPI } from '../services/api';
 import { useAuth } from '../store/auth';
 import DashboardMaintenancePage from './DashboardMaintenancePage';
 import {
@@ -8,9 +8,9 @@ import {
   CartesianGrid, LineChart, Line,
 } from 'recharts';
 import {
-  ClipboardList, CheckCircle, AlertTriangle,
-  ChevronRight, ArrowRight, Package, Wheat, FileCheck,
-  Users, Target, Recycle, Activity,
+  ClipboardList, CheckCircle, AlertTriangle, Clock,
+  ChevronRight, ArrowRight, Package, FileCheck,
+  Wrench, Activity, Zap, CalendarCheck,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -30,18 +30,18 @@ const statutBadge = {
 };
 
 const ACCENT = {
-  primary:  { iconBg:'from-primary/20 to-primary/10', icon:'text-primary', bar:'bg-primary', border:'border-l-primary' },
-  blue:     { iconBg:'from-blue-500/20 to-blue-600/10', icon:'text-blue-600', bar:'bg-blue-500', border:'border-l-blue-500' },
-  green:    { iconBg:'from-green-500/20 to-green-600/10', icon:'text-green-600', bar:'bg-green-500', border:'border-l-green-500' },
-  red:      { iconBg:'from-red-500/20 to-red-600/10', icon:'text-red-600', bar:'bg-red-500', border:'border-l-red-500' },
-  orange:   { iconBg:'from-orange-500/20 to-orange-600/10', icon:'text-orange-500', bar:'bg-orange-500', border:'border-l-orange-500' },
-  amber:    { iconBg:'from-amber-500/20 to-amber-600/10', icon:'text-amber-600', bar:'bg-amber-500', border:'border-l-amber-500' },
+  primary: { iconBg:'from-primary/20 to-primary/10', icon:'text-primary', border:'border-l-primary' },
+  blue:    { iconBg:'from-blue-500/20 to-blue-600/10', icon:'text-blue-600', border:'border-l-blue-500' },
+  green:   { iconBg:'from-green-500/20 to-green-600/10', icon:'text-green-600', border:'border-l-green-500' },
+  red:     { iconBg:'from-red-500/20 to-red-600/10', icon:'text-red-600', border:'border-l-red-500' },
+  orange:  { iconBg:'from-orange-500/20 to-orange-600/10', icon:'text-orange-500', border:'border-l-orange-500' },
+  amber:   { iconBg:'from-amber-500/20 to-amber-600/10', icon:'text-amber-600', border:'border-l-amber-500' },
 };
 
-function StatCard({ icon: Icon, label, value, accent = 'primary', sub }) {
+function StatCard({ icon: Icon, label, value, accent = 'primary', sub, to }) {
   const c = ACCENT[accent] || ACCENT.primary;
-  return (
-    <div className={`relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md border-l-4 ${c.border}`}>
+  const inner = (
+    <div className={`relative overflow-hidden rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md border-l-4 ${c.border} ${to ? 'cursor-pointer' : ''}`}>
       <div className="flex items-start justify-between">
         <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{label}</p>
@@ -54,39 +54,10 @@ function StatCard({ icon: Icon, label, value, accent = 'primary', sub }) {
       </div>
     </div>
   );
+  return to ? <Link to={to}>{inner}</Link> : inner;
 }
 
-const CHART_BORDER = {
-  green: 'border-t-green-500',
-  amber: 'border-t-amber-500',
-  red:   'border-t-red-500',
-};
-
-function ChartCard({ title, subtitle, children, empty, accent, className = '' }) {
-  const borderClass = accent ? `border-t-4 ${CHART_BORDER[accent] || ''}` : '';
-  return (
-    <section className={`rounded-2xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md ${borderClass} ${className}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-semibold text-foreground">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
-        </div>
-      </div>
-      <div className="mt-4 h-[280px] w-full min-h-[280px]">
-        {empty ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            <div className="text-center">
-              <Activity size={32} className="mx-auto mb-2 opacity-20" />
-              Aucune donnée pour cette période.
-            </div>
-          </div>
-        ) : children}
-      </div>
-    </section>
-  );
-}
-
-function CustomTooltip({ active, payload, label, formatter }) {
+function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-xl">
@@ -95,68 +66,99 @@ function CustomTooltip({ active, payload, label, formatter }) {
         <div key={i} className="flex items-center gap-2 text-sm">
           <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: p.color }} />
           <span className="text-muted-foreground">{p.name}:</span>
-          <span className="font-semibold">{formatter ? formatter(p.value) : p.value}</span>
+          <span className="font-semibold">{p.value}</span>
         </div>
       ))}
     </div>
   );
 }
 
-// ── Routeur principal ─────────────────────────────────────────────────
+// ── Routeur principal ─────────────────────────────────────────────
 export default function DashboardPage() {
   const { user, moduleScope } = useAuth();
-  if (moduleScope === 'MAINTENANCE') return <DashboardMaintenancePage/>;
-  return <DashboardProduction user={user}/>;
+  if (moduleScope === 'MAINTENANCE') return <DashboardMaintenancePage />;
+  return <DashboardGeneral user={user} />;
 }
 
-// ════════════════════════════════════════════════════════════════════════
-// DASHBOARD PRODUCTION
-// ════════════════════════════════════════════════════════════════════════
-function DashboardProduction({ user }) {
-  const [stats,     setStats]     = useState(null);
-  const [prod,      setProd]      = useState(null);
-  const [adoption,  setAdoption]  = useState(null);
-  const [activite,  setActivite]  = useState([]);
-  const [matieres,  setMatieres]  = useState({ total: 0, en_alerte: 0, en_rupture: 0 });
-  const [recentes,  setRecentes]  = useState([]);
-  const [loading,   setLoading]   = useState(true);
+// ════════════════════════════════════════════════════════════════════
+// DASHBOARD GÉNÉRAL — 6 indicateurs du rapport
+// ════════════════════════════════════════════════════════════════════
+function DashboardGeneral({ user }) {
+  const [stats,    setStats]    = useState(null);
+  const [stock,    setStock]    = useState({ en_alerte: 0, en_rupture: 0 });
+  const [planning, setPlanning] = useState({ total: 0, realise: 0, en_retard: 0 });
+  const [alertes,  setAlertes]  = useState([]);
+  const [tendance, setTendance] = useState([]);
+  const [recentes, setRecentes] = useState([]);
+  const [loading,  setLoading]  = useState(true);
 
   useEffect(() => {
     Promise.all([
-      dashboardAPI.stats(),
-      dashboardAPI.production(),
-      dashboardAPI.adoption(),
-      dashboardAPI.activite(),
-      soumissionsAPI.lister({ module: 'PRODUCTION', limit: 8, page: 1 }),
-    ])
-      .then(([s, p, ad, ac, rec]) => {
-        setStats(s.data || {});
-        setProd(p.data || {});
-        setAdoption(ad.data || {});
-        setActivite(Array.isArray(ac.data) ? ac.data : []);
-        setRecentes(rec.data?.data || []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      dashboardAPI.stats().catch(() => ({ data: {} })),
+      stockAPI.lister({ limit: 200 }).catch(() => ({ data: { data: [] } })),
+      planningAPI.lister({ date: new Date().toISOString().slice(0, 10) }).catch(() => ({ data: [] })),
+      alertesAPI.lister({ statut: 'NON_LUE', limit: 50 }).catch(() => ({ data: [] })),
+      soumissionsAPI.lister({ limit: 6, page: 1 }).catch(() => ({ data: { data: [] } })),
+    ]).then(([s, sk, pl, al, rec]) => {
+      const data = s.data || {};
+      setStats(data);
+
+      // Stock pièces — backend retourne stocks_bas (nombre direct)
+      const pieces = sk.data?.data || sk.data || [];
+      setStock({
+        en_alerte:  pieces.filter(p => Number(p.quantite_stock) <= Number(p.seuil_alerte) && Number(p.quantite_stock) > 0).length,
+        en_rupture: pieces.filter(p => Number(p.quantite_stock) === 0).length,
+      });
+
+      // Planning du jour — backend retourne plannings_jour en tableau [{statut, nb}]
+      const plans = data.plannings_jour || [];
+      const getStatut = (st) => plans.find(p => p.statut === st)?.nb || 0;
+      setPlanning({
+        total:     plans.reduce((s, p) => s + Number(p.nb || 0), 0),
+        realise:   Number(getStatut('REALISE')),
+        en_retard: Number(getStatut('EN_RETARD')),
+      });
+
+      // Alertes — backend retourne alertes [{type_alerte, nb}]
+      const al_list = al.data?.data || al.data || [];
+      setAlertes(al_list);
+
+      // Tendance 7j
+      const t = (data.tendance_7j || []).map(r => ({
+        jour: r.jour ? format(new Date(r.jour), 'EEE dd/MM', { locale: fr }) : '?',
+        soumissions: Number(r.nb || 0),
+      }));
+      setTendance(t);
+
+      // Soumissions récentes
+      setRecentes(rec.data?.data || []);
+    }).finally(() => setLoading(false));
   }, []);
 
-  // KPIs calculés
-  const totalPassations = (prod?.passations_quart || [])
-    .reduce((sum, r) => sum + Number(r.nb || 0), 0);
-  const adoptionPct = Number(adoption?.taux_adoption_pct || 0);
-  const adoptionAccent = adoptionPct >= 80 ? 'green' : adoptionPct >= 50 ? 'orange' : 'red';
-  const nbAlertes = (stats?.alertes || []).reduce((s, a) => s + Number(a.nb || 0), 0);
+  // ── KPIs formulaires du jour (backend: soumissions_jour) ─────
+  const formJour = stats?.soumissions_jour || {};
+  const nbSoumis    = Number(formJour.soumis    || 0);
+  const nbBrouillon = Number(formJour.en_cours  || 0);
+  const nbAttendus  = Number(formJour.total     || 0);
 
-  // Tendance 7 jours → graphique
-  const tendance = (stats?.tendance_7j || []).map(r => ({
-    jour: r.jour ? format(new Date(r.jour), 'dd/MM', { locale: fr }) : '?',
-    soumissions: Number(r.nb || 0),
-  }));
+  // ── KPIs équipements (backend: equipements = [{etat, nb}]) ───
+  const equipsArr = stats?.equipements || [];
+  const getEtat = (e) => Number(equipsArr.find(x => x.etat === e)?.nb || 0);
+  const nbOp    = getEtat('OPERATIONNEL');
+  const nbPanne = getEtat('EN_PANNE');
+  const nbMaint = getEtat('EN_MAINTENANCE');
 
-  // Top 5 opérateurs par soumissions
-  const topOps = [...activite]
-    .sort((a, b) => Number(b.soumis || 0) - Number(a.soumis || 0))
-    .slice(0, 5);
+  // ── Alertes par type (backend: alertes = [{type_alerte, nb}]) 
+  const nbAlertes   = alertes.reduce((s, a) => s + Number(a.nb || 0), 0);
+  const nbCritiques = Number(alertes.find(a => a.type_alerte === 'PANNE_CRITIQUE')?.nb || 0);
+  const alerteAccent = nbCritiques > 0 ? 'red' : nbAlertes > 0 ? 'orange' : 'green';
+  const valides = Number(stats?.soumissions_jour?.valides || formJour.valides || 0);
+
+  // ── Planning du jour ─────────────────────────────────────────
+  const planAccent = planning.en_retard > 0 ? 'red' : planning.realise === planning.total && planning.total > 0 ? 'green' : 'primary';
+
+  // ── Stock ────────────────────────────────────────────────────
+  const stockAccent = stock.en_rupture > 0 ? 'red' : stock.en_alerte > 0 ? 'amber' : 'green';
 
   if (loading) return (
     <div className="flex items-center justify-center h-64">
@@ -165,161 +167,137 @@ function DashboardProduction({ user }) {
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6 animate-fade-in">
+    <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-6">
 
       {/* En-tête */}
       <div>
         <h1 className="text-2xl font-bold text-foreground md:text-3xl">
           Bonjour, {user?.prenom}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground flex items-center gap-2">
-          <span className="badge-green">Production</span>
+        <p className="mt-1 text-sm text-muted-foreground">
           {format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}
         </p>
       </div>
 
-      {/* KPIs production — 30 derniers jours */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard
-          icon={ClipboardList}
-          label="Passations de quart (30j)"
-          value={totalPassations}
-        />
-        <StatCard
-          icon={Package}
-          label="Suivi pertes matières"
-          value={prod?.pertes_matieres ?? 0}
-          accent="blue"
-          sub="saisies validées"
-        />
-        <StatCard
-          icon={Recycle}
-          label="Indicateurs déchets"
-          value={prod?.indicateurs_dechets ?? 0}
-          accent="amber"
-          sub="fiches remplies"
-        />
-        <StatCard
-          icon={FileCheck}
-          label="Plannings production"
-          value={prod?.plannings_production ?? 0}
-          accent="green"
-          sub="soumis ce mois"
-        />
-      </div>
-
-      {/* KPIs transverses */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard
-          icon={Target}
-          label="Taux d'adoption"
-          value={`${adoptionPct.toFixed(0)} %`}
-          accent={adoptionAccent}
-          sub={`${adoption?.total_soumis ?? 0} soumis / ${adoption?.total_attendus ?? 0} attendus`}
-        />
-        <StatCard
-          icon={AlertTriangle}
-          label="Alertes non lues"
-          value={nbAlertes}
-          accent={nbAlertes > 0 ? 'orange' : 'green'}
-          sub={nbAlertes > 0 ? 'À traiter' : 'Aucune alerte'}
-        />
-        <StatCard
-          icon={Wheat}
-          label="Matières en alerte stock"
-          value={matieres.en_alerte}
-          accent={matieres.en_alerte > 0 ? 'red' : 'green'}
-          sub={matieres.en_rupture > 0 ? `${matieres.en_rupture} en rupture totale` : 'Stocks OK'}
-        />
-      </div>
-
-      {/* Bannière alerte stock */}
-      {(matieres.en_alerte > 0 || matieres.en_rupture > 0) && (
-        <div className="flex items-center gap-3 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 to-orange-50/50 px-4 py-3 text-sm text-orange-900 shadow-sm">
-          <div className="rounded-full bg-orange-200 p-1.5">
-            <AlertTriangle size={16} />
-          </div>
-          <p className="font-medium">
-            {matieres.en_rupture > 0
-              ? `${matieres.en_rupture} matière(s) en rupture totale — réapprovisionnement urgent`
-              : `${matieres.en_alerte} matière(s) sous le seuil d'alerte`}
+      {/* ── INDICATEUR 3 : Alertes critiques ── */}
+      {nbCritiques > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <Zap size={16} className="text-red-600 flex-shrink-0"/>
+          <p className="font-semibold">
+            {nbCritiques} panne{nbCritiques > 1 ? 's' : ''} critique{nbCritiques > 1 ? 's' : ''} non traitée{nbCritiques > 1 ? 's' : ''} — intervention requise
           </p>
-          <Link to="/matieres" className="ml-auto text-xs text-orange-700 underline font-medium">
-            Voir →
+          <Link to="/alertes" className="ml-auto text-xs text-red-700 underline font-medium">
+            Voir les alertes →
           </Link>
         </div>
       )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      {/* ── 6 INDICATEURS PRINCIPAUX ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
 
-        {/* Tendance 7 jours */}
-        <ChartCard
-          title="Soumissions — 7 derniers jours"
-          empty={tendance.length === 0}
+        {/* 1. Formulaires du jour */}
+        <StatCard
+          icon={ClipboardList}
+          label="Formulaires soumis aujourd'hui"
+          value={nbSoumis}
+          accent="primary"
+          sub={`${nbBrouillon} en cours · ${nbAttendus} attendus`}
+          to="/soumissions"
+        />
+
+        {/* 2. État des équipements */}
+        <StatCard
+          icon={Wrench}
+          label="Équipements opérationnels"
+          value={nbOp}
+          accent={nbPanne > 0 ? 'red' : 'green'}
+          sub={`${nbPanne} en panne · ${nbMaint} en maintenance`}
+          to="/equipements"
+        />
+
+        {/* 3. Alertes non lues */}
+        <StatCard
+          icon={AlertTriangle}
+          label="Alertes non lues"
+          value={nbAlertes}
+          accent={alerteAccent}
+          sub={nbCritiques > 0 ? `${nbCritiques} panne(s) critique(s)` : nbAlertes > 0 ? 'À traiter' : 'Aucune alerte'}
+          to="/alertes"
+        />
+
+        {/* 4. Planning du jour */}
+        <StatCard
+          icon={CalendarCheck}
+          label="Plannings du jour"
+          value={planning.total}
+          accent={planAccent}
+          sub={`${planning.realise} réalisés · ${planning.en_retard} en retard`}
+          to="/planning"
+        />
+
+        {/* 5. Stock pièces */}
+        <StatCard
+          icon={Package}
+          label="Pièces sous seuil d'alerte"
+          value={stock.en_alerte + stock.en_rupture}
+          accent={stockAccent}
+          sub={stock.en_rupture > 0 ? `${stock.en_rupture} en rupture totale` : stock.en_alerte > 0 ? 'Réapprovisionnement requis' : 'Stocks OK'}
+          to="/stock"
+        />
+
+        {/* Taux validation */}
+        <StatCard
+          icon={CheckCircle}
+          label="Formulaires validés"
+          value={valides}
           accent="green"
-          className="xl:col-span-2"
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={tendance}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5"/>
-              <XAxis dataKey="jour" tick={{ fontSize: 12 }}/>
-              <YAxis tick={{ fontSize: 12 }} allowDecimals={false}/>
-              <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="monotone"
-                dataKey="soumissions"
-                stroke="#16a34a"
-                strokeWidth={2.5}
-                dot={{ r: 4, fill: '#16a34a' }}
-                name="Soumissions"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        {/* Top opérateurs */}
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-foreground">Top opérateurs</h2>
-            <Users size={16} className="text-muted-foreground" />
-          </div>
-          <div className="space-y-3">
-            {topOps.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">Aucune activité récente</p>
-            ) : topOps.map((u, i) => (
-              <div key={u.id} className="flex items-center gap-3">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                  i === 0 ? 'bg-yellow-100 text-yellow-700' :
-                  i === 1 ? 'bg-gray-100 text-gray-600' :
-                  'bg-primary/10 text-primary'
-                }`}>
-                  {i + 1}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-foreground truncate">{u.prenom} {u.nom}</p>
-                  <p className="text-xs text-muted-foreground">{u.role}</p>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <span className="text-sm font-bold text-primary">{u.soumis ?? 0}</span>
-                  <p className="text-xs text-muted-foreground">soumis</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+          sub={`sur ${nbSoumis} soumis aujourd'hui`}
+          to="/historique"
+        />
       </div>
+
+      {/* ── INDICATEUR 6 : Courbe 7 derniers jours ── */}
+      <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="font-semibold text-foreground">Activité de saisie — 7 derniers jours</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Nombre de soumissions par jour</p>
+          </div>
+          <Activity size={18} className="text-muted-foreground"/>
+        </div>
+        <div className="h-[220px]">
+          {tendance.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-sm text-muted-foreground">Aucune donnée disponible</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={tendance}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5"/>
+                <XAxis dataKey="jour" tick={{ fontSize: 11 }}/>
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false}/>
+                <Tooltip content={<CustomTooltip />}/>
+                <Line
+                  type="monotone"
+                  dataKey="soumissions"
+                  stroke="var(--color-primary, #2563eb)"
+                  strokeWidth={2.5}
+                  dot={{ r: 4 }}
+                  name="Soumissions"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </section>
 
       {/* Soumissions récentes */}
       <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="border-b border-border bg-gradient-to-r from-primary/5 to-transparent px-5 py-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-foreground">
-              Soumissions récentes — Production
-            </h2>
-            <Link to="/soumissions" className="btn-secondary text-sm px-4 py-2 flex items-center gap-2">
-              Toutes <ArrowRight size={16}/>
-            </Link>
-          </div>
+        <div className="border-b border-border px-5 py-4 flex items-center justify-between">
+          <h2 className="font-semibold text-foreground">Soumissions récentes</h2>
+          <Link to="/soumissions" className="btn-secondary text-sm px-4 py-2 flex items-center gap-2">
+            Toutes <ArrowRight size={16}/>
+          </Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -327,7 +305,7 @@ function DashboardProduction({ user }) {
               <tr className="border-b text-left text-xs uppercase text-muted-foreground">
                 <th className="th">Formulaire</th>
                 <th className="th">Statut</th>
-                <th className="th">Opérateur</th>
+                <th className="th">Auteur</th>
                 <th className="th">Date</th>
               </tr>
             </thead>
@@ -335,7 +313,7 @@ function DashboardProduction({ user }) {
               {recentes.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="text-center py-8 text-muted-foreground text-sm">
-                    Aucune soumission production récente
+                    Aucune soumission récente
                   </td>
                 </tr>
               ) : recentes.map(a => (
@@ -351,7 +329,7 @@ function DashboardProduction({ user }) {
                     <span className={statutBadge[a.statut] || 'badge-gray'}>{a.statut}</span>
                   </td>
                   <td className="td text-sm text-muted-foreground">
-                    {a.operateur_prenom} {a.operateur_nom}
+                    {a.auteur_prenom} {a.auteur_nom}
                   </td>
                   <td className="td text-xs text-muted-foreground">
                     {formatDateSafe(a.date_soumission)}
@@ -363,22 +341,23 @@ function DashboardProduction({ user }) {
         </div>
       </section>
 
-      {/* Raccourcis rapides */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* Raccourcis */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { to: '/formulaires', icon: ClipboardList, label: 'Remplir un formulaire',  accent: 'primary' },
-          { to: '/matieres',    icon: Wheat,         label: 'Gérer les matières',     accent: 'green' },
-          { to: '/soumissions', icon: FileCheck,     label: 'Voir les soumissions',   accent: 'blue' },
+          { to: '/formulaires', icon: ClipboardList, label: 'Remplir un formulaire', accent: 'primary' },
+          { to: '/planning',    icon: CalendarCheck, label: 'Voir le planning',       accent: 'blue'    },
+          { to: '/alertes',     icon: AlertTriangle, label: 'Gérer les alertes',      accent: 'orange'  },
+          { to: '/stock',       icon: Package,       label: 'Gérer le stock',         accent: 'green'   },
         ].map(({ to, icon: Icon, label, accent }) => {
           const c = ACCENT[accent] || ACCENT.primary;
           return (
             <Link key={to} to={to}
-              className="rounded-2xl border border-border bg-card p-5 shadow-sm flex items-center gap-4 hover:shadow-md transition-shadow cursor-pointer">
-              <div className={`rounded-xl bg-gradient-to-br p-3 ${c.iconBg}`}>
-                <Icon size={18} className={c.icon} />
+              className="rounded-2xl border border-border bg-card p-4 shadow-sm flex items-center gap-3 hover:shadow-md transition-shadow">
+              <div className={`rounded-xl bg-gradient-to-br p-2.5 ${c.iconBg}`}>
+                <Icon size={16} className={c.icon} />
               </div>
-              <span className="font-medium text-foreground text-sm">{label}</span>
-              <ChevronRight size={16} className="ml-auto text-muted-foreground" />
+              <span className="font-medium text-foreground text-xs leading-tight">{label}</span>
+              <ChevronRight size={14} className="ml-auto text-muted-foreground flex-shrink-0" />
             </Link>
           );
         })}
